@@ -8,7 +8,7 @@ pipeline:
     nemo:
       vad_model_path: models/nemo/vad/vad_multilingual_marblenet.nemo
       diarizer_config_path: models/nemo/diarizer/inference.yaml
-      asr_model_path: models/nemo/asr/stt_en_conformer_ctc_large.nemo
+    asr_model_path: models/nemo/asr/stt_en_conformer_ctc_medium.nemo
       allow_precomputed_outputs: true
       vad_command: python scripts/nemo_vad.py --audio {audio_path} --out-dir {output_dir}
         --meeting-id {meeting_id} --derive-from-diarization-rttm

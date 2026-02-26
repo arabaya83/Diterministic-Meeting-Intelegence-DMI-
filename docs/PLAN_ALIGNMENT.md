@@ -126,3 +126,6 @@ Status legend:
 Related evidence checklist:
 
 - `docs/ACCEPTANCE_CHECKLIST_SECTION16.md`
+- `docs/CRISP_DM_ALIGNMENT.md`
+- `docs/NORMALIZATION_DECISION.md`
+- `docs/RETRIEVAL_LAYER_STATUS.md`
