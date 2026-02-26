@@ -135,6 +135,9 @@ Status: `Partial`
 Evidence paths:
 
 - `docs/PLAN_ALIGNMENT.md`
+- `docs/CRISP_DM_ALIGNMENT.md`
+- `docs/NORMALIZATION_DECISION.md`
+- `docs/RETRIEVAL_LAYER_STATUS.md`
 - `docs/REPRODUCIBILITY_OBSERVABILITY.md`
 - `docs/GOVERNANCE_OFFLINE.md`
 - `artifacts/ami/<meeting_id>/stage_trace.jsonl`
