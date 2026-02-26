@@ -1,0 +1,44 @@
+pipeline:
+  seed: 42
+  chunk:
+    target_words: 220
+    overlap_words: 40
+  speech_backend:
+    mode: mock  # mock | nemo
+    nemo:
+      vad_model_path: models/nemo/vad/
+      diarizer_config_path: models/nemo/diarizer/config.yaml
+      asr_model_path: models/nemo/asr/
+      # Optional command templates for local offline NeMo execution.
+      # Placeholders: {meeting_id} {audio_path} {output_dir} {vad_model_path}
+      # {diarizer_config_path} {asr_model_path}
+      vad_command: null
+      diarization_command: null
+      asr_command: null
+      allow_precomputed_outputs: true
+  summarization_backend:
+    mode: mock  # mock | llama_cpp
+    llama_cpp:
+      model_path: models/llm/gguf/model.gguf
+      n_ctx: 4096
+      n_gpu_layers: 24
+  extraction_backend:
+    mode: mock  # mock | llama_cpp
+
+paths:
+  raw_audio_dir: data/rawa/ami/audio
+  annotations_dir: data/rawa/ami/annotations
+  staged_dir: data/staged/ami
+  artifacts_dir: artifacts
+  models_dir: models
+
+runtime:
+  offline: true
+  fail_on_missing_models: false
+  overwrite: true
+  deterministic_mode: true
+  fail_on_determinism_risks: false
+  write_stage_trace: true
+  write_preflight_audit: true
+  fail_on_offline_violations: true
+  include_nondeterministic_timings_in_manifest: false
