@@ -1,0 +1,6 @@
+[core]
+    no_scm = true
+[cache]
+    dir = .dvc/cache
+[remote "local_offline"]
+    url = dvc_store/local

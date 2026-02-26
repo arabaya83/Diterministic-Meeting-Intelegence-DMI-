@@ -1,0 +1,12 @@
+stages:
+  ami_pipeline_run:
+    cmd: PYTHONPATH=src python3 -m ami_mom_pipeline --config configs/pipeline.nemo.llama.yaml run --meeting-id ES2005a
+    deps:
+      - src/
+      - scripts/
+      - configs/pipeline.nemo.llama.yaml
+      - data/rawa/ami/
+      - models/
+    outs:
+      - artifacts/ami/ES2005a
+      - artifacts/eval/ami

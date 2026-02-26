@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local caches
+.cache/
+
+# Runtime / pipeline outputs
+artifacts/
+data/staged/
+
+# Local data (do not commit corpora/audio)
+data/rawa/
+
+# Model artifacts (downloaded/offline binaries)
+models/**/*.nemo
+models/**/*.gguf
+models/**/*.bin
+models/**/*.pt
+models/**/*.ckpt
+models/**/*.onnx
+models/**/*.npz
+models/**/*.h5
+
+# Local embedding/vector indexes and runtime model outputs
+models/embeddings/
+
+# DVC / MLflow local stores (generated)
+dvc_store/local/
+artifacts/mlruns/
+
+# Logs / temp files
+*.log
+*.tmp
+*.temp
+
+# Notebook noise
+.ipynb_checkpoints/
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -1,0 +1,64 @@
+pipeline:
+  seed: 42
+  chunk:
+    target_words: 220
+    overlap_words: 40
+  speech_backend:
+    mode: nemo
+    nemo:
+      # Fill these with local paths after one-time model acquisition.
+      vad_model_path: models/nemo/vad/vad_multilingual_marblenet.nemo
+      diarizer_config_path: models/nemo/diarizer/inference.yaml
+      asr_model_path: models/nemo/asr/stt_en_conformer_ctc_small.nemo
+      allow_precomputed_outputs: true
+
+      # Wrapper-based commands (offline, local-only)
+      # VAD wrapper normalizes outputs; use delegate-cmd to call your pinned NeMo VAD runner.
+      vad_command: >-
+        python scripts/nemo_vad.py
+        --audio {audio_path}
+        --out-dir {output_dir}
+        --meeting-id {meeting_id}
+        --derive-from-diarization-rttm
+
+      # Diarization wrapper can attempt NeMo API directly (version-dependent).
+      diarization_command: >-
+        python scripts/nemo_diarize.py
+        --audio {audio_path}
+        --config {diarizer_config_path}
+        --out-dir {output_dir}
+        --meeting-id {meeting_id}
+        --try-nemo-api
+
+      # ASR wrapper can attempt NeMo ASR API directly using a local .nemo ASR model.
+      asr_command: >-
+        python scripts/nemo_asr.py
+        --audio {audio_path}
+        --model {asr_model_path}
+        --diarization-json {diarization_json}
+        --out-dir {output_dir}
+        --meeting-id {meeting_id}
+        --try-nemo-api
+        --batch-size 64
+  summarization_backend:
+    mode: mock
+  extraction_backend:
+    mode: mock
+
+paths:
+  raw_audio_dir: data/rawa/ami/audio
+  annotations_dir: data/rawa/ami/annotations
+  staged_dir: data/staged/ami
+  artifacts_dir: artifacts
+  models_dir: models
+
+runtime:
+  offline: true
+  fail_on_missing_models: true
+  overwrite: true
+  deterministic_mode: true
+  fail_on_determinism_risks: false
+  write_stage_trace: true
+  write_preflight_audit: true
+  fail_on_offline_violations: true
+  include_nondeterministic_timings_in_manifest: false
