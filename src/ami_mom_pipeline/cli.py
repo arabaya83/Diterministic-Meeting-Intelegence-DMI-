@@ -1,3 +1,20 @@
+"""Command-line interface for the AMI offline pipeline.
+
+This module provides the public CLI entry points used by developers and
+automation scripts to:
+
+- discover available AMI meetings in the configured raw audio directory
+- run the pipeline for a single meeting
+- run the pipeline for a bounded list of meetings
+
+Behavioral notes:
+
+- CLI argument names and defaults are part of the external contract; do not
+  change them without an explicit migration plan.
+- The CLI delegates all deterministic/offline enforcement to `AppConfig` and
+  `run_pipeline`; it only handles argument parsing and dispatch.
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -9,6 +26,14 @@ from .pipeline import list_meetings, run_pipeline
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build and return the top-level CLI parser.
+
+    Returns:
+        argparse.ArgumentParser: Configured parser with subcommands:
+            - `list-meetings`
+            - `run`
+            - `run-many`
+    """
     p = argparse.ArgumentParser(prog="ami-mom", description="Offline-first AMI meeting understanding pipeline")
     p.add_argument("--config", default="configs/pipeline.sample.yaml", help="Path to YAML config")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -26,6 +51,19 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Execute CLI command dispatch.
+
+    Args:
+        argv: Optional argv override for tests/invocation wrappers.
+
+    Returns:
+        int: POSIX-style exit code (`0` success, non-zero on errors).
+
+    Side Effects:
+        - Reads configuration from YAML when `--config` exists.
+        - Writes pipeline artifacts via `run_pipeline` when run commands are used.
+        - Prints compact JSON status lines for automation.
+    """
     parser = build_parser()
     args = parser.parse_args(argv)
     cfg_path = args.config if Path(args.config).exists() else None

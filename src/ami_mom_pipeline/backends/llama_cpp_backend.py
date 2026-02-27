@@ -1,3 +1,10 @@
+"""Local llama.cpp backend for offline summarization and extraction.
+
+The backend enforces local model loading and produces schema-validated
+`MinutesSummary` and `ExtractionOutput` objects used by downstream artifact
+writers in `pipeline.py`.
+"""
+
 from __future__ import annotations
 
 import json
@@ -10,15 +17,30 @@ from ..schemas.models import ActionItem, DecisionItem, EvidenceBackedPoint, Extr
 
 
 class LlamaCppBackendError(RuntimeError):
+    """Raised when llama backend configuration or generation fails."""
+
     pass
 
 
 class LlamaCppBackend:
+    """Offline wrapper around `llama-cpp-python` inference calls."""
+
     def __init__(self, cfg: AppConfig):
+        """Initialize backend with application configuration."""
         self.cfg = cfg
         self._llm = None
 
     def summarize(self, meeting_id: str, turns: list[dict[str, Any]], chunks: list[dict[str, Any]]) -> MinutesSummary:
+        """Generate structured minutes summary from meeting chunks.
+
+        Args:
+            meeting_id: AMI meeting id.
+            turns: Canonical transcript turns.
+            chunks: Chunked transcript rows.
+
+        Returns:
+            MinutesSummary: Summary object with evidence-backed sections.
+        """
         llm = self._get_llm()
         if not chunks:
             return MinutesSummary(
@@ -94,7 +116,8 @@ class LlamaCppBackend:
             backend="llama_cpp",
         )
 
-    def extract(self, *args, **kwargs):
+    def extract(self, *args: Any, **kwargs: Any) -> ExtractionOutput:
+        """Extract structured decisions/action items from transcript chunks."""
         meeting_id = kwargs["meeting_id"]
         chunks = kwargs["chunks"]
         summary = kwargs.get("summary") or {}
@@ -164,6 +187,7 @@ class LlamaCppBackend:
         return ExtractionOutput(meeting_id=meeting_id, decisions=decisions, action_items=actions, flags=sorted(set(flags)))
 
     def _get_llm(self, task: str = "summarization"):
+        """Lazily load and cache llama model for summarize/extract tasks."""
         if self._llm is not None:
             return self._llm
 
@@ -200,6 +224,7 @@ class LlamaCppBackend:
         return self._llm
 
     def _generate(self, llm, prompt: str, max_tokens: int, task: str = "summarization") -> str:
+        """Execute one llama generation call and return text payload."""
         if task == "extraction":
             cfg_obj = self.cfg.pipeline.extraction_backend.llama_cpp
             if not cfg_obj.model_path:
@@ -221,6 +246,7 @@ class LlamaCppBackend:
 
     @staticmethod
     def _chunk_prompt(meeting_id: str, chunk: dict[str, Any]) -> str:
+        """Create chunk-level summarization prompt with strict JSON contract."""
         return (
             "You summarize meeting transcript chunks.\n"
             "Return ONLY JSON with keys: summary (string), key_points (array of 1-3 strings).\n"
@@ -234,6 +260,7 @@ class LlamaCppBackend:
 
     @staticmethod
     def _meeting_prompt(meeting_id: str, chunk_summaries: list[str], turns_count: int, chunk_count: int) -> str:
+        """Create meeting-level synthesis prompt with strict JSON contract."""
         body = "\n\n".join(chunk_summaries[:80])
         return (
             "You create Minutes of Meeting summaries from transcript evidence.\n"
@@ -258,6 +285,7 @@ class LlamaCppBackend:
 
     @staticmethod
     def _parse_summary_json(text: str) -> dict[str, Any] | None:
+        """Parse and normalize summary JSON from possibly noisy model output."""
         if not text:
             return None
         stripped = text.strip()

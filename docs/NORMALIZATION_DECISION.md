@@ -2,63 +2,54 @@
 
 ## Decision Summary
 
-Current implementation uses **rule-based transcript normalization** as the primary normalization path.
+Current implementation supports **spaCy-backed normalization with an offline-safe fallback**.
 
 Status relative to plan:
 
-- Plan component list mentions `spaCy (offline English model)` as a candidate component.
-- Current implementation intentionally prioritizes rule-based normalization for offline robustness, simplicity, and deterministic behavior.
+- Plan component list mentions `spaCy (offline English model)` and rule-based normalization.
+- The pipeline now supports both, with configurable behavior:
+  - `mode: spacy` uses `en_core_web_sm` when available offline
+  - automatic fallback to `spacy.blank("en")` if the model package is unavailable
+  - `mode: rule` remains available for strict rule-only normalization
 
-## Why Rule-Based Was Chosen (Current Default)
+## Why This Hybrid Approach Was Chosen
 
 1. Offline reliability
-- No additional runtime model downloads required
-- Fewer environment issues on constrained/offline setups
+- No runtime network downloads required
+- Uses local spaCy model when present, otherwise local `spacy.blank("en")`
 
 2. Determinism and auditability
-- Rules are easier to inspect and version
-- Fewer hidden model-behavior changes across environments
+- Normalization mode used is recorded in canonical meeting metadata
+- Behavior is explicit and config-driven
 
 3. Performance on GTX 1080 Ti workstation context
 - CPU overhead remains low
 - Keeps preprocessing lightweight relative to NeMo and `llama.cpp` stages
 
 4. Good enough for current pipeline focus
-- Current quality bottleneck is primarily speech hypothesis quality (`WER/cpWER/DER`), not normalization sophistication
+- Current quality bottleneck remains primarily speech hypothesis quality (`WER/cpWER/DER`)
 
 ## What Is Implemented
 
 - Raw transcript view preserved:
   - `artifacts/ami/{meeting_id}/transcript_raw.json`
-- Normalized transcript view preserved:
+- Normalized transcript view preserved (spaCy/rule mode):
   - `artifacts/ami/{meeting_id}/transcript_normalized.json`
 - Canonical Pydantic meeting object built from normalized text:
   - `artifacts/ami/meetings_canonical.jsonl`
 
 Code references:
 
-- `src/ami_mom_pipeline/pipeline.py`
+- `src/ami_mom_pipeline/pipeline.py` (`normalize_text`)
+- `src/ami_mom_pipeline/config.py` (`pipeline.normalization`)
 - `src/ami_mom_pipeline/schemas/models.py`
 
-## When to Add spaCy (Optional Upgrade)
+## Recommended settings
 
-Add offline spaCy normalization if one of these becomes a priority:
+For final offline runs:
 
-- stronger sentence segmentation / entity-aware normalization
-- improved downstream extraction recall from cleaner punctuation/casing
-- explicit academic requirement to demonstrate model-based NLP preprocessing
+- `pipeline.normalization.mode: spacy`
+- `pipeline.normalization.spacy_model: en_core_web_sm`
+- `pipeline.normalization.fail_on_spacy_missing: false`
 
-If added later:
-
-- keep it optional behind config
-- preserve current rule-based path as deterministic fallback
-- pin offline model artifact and document checksum/version
-
-## Recommended Position in Thesis/Report
-
-Document this as:
-
-- a deliberate engineering tradeoff (offline reproducibility over preprocessing complexity)
-- justified by current bottleneck analysis (speech recognition quality dominates MoM quality)
-
-This keeps plan alignment strong while remaining honest and defensible.
+This gives model-based normalization when available while preserving offline robustness.

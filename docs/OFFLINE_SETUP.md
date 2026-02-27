@@ -2,6 +2,13 @@
 
 This scaffold is offline-first after one-time artifact acquisition.
 
+Core offline rules:
+
+- no runtime network calls for speech or LLM inference
+- all model paths must resolve to local filesystem paths
+- NeMo and llama backends fail fast on invalid offline path usage
+- preflight audit artifacts must be written for each meeting run
+
 Expected local directories:
 
 - `models/nemo/` (VAD/diarization/ASR models and configs)
@@ -62,11 +69,13 @@ Expected output files produced (or precomputed) in `artifacts/ami/{meeting_id}/`
 - `asr_segments.json`
 - `asr_confidence.json`
 - `full_transcript.txt`
+- `retrieval_results.json` (when retrieval is enabled)
 
 Notes:
 
 - `scripts/nemo_diarize.py` and `scripts/nemo_asr.py` include best-effort NeMo API execution paths (`--try-nemo-api`), but exact compatibility depends on your pinned NeMo version/config schema.
 - `scripts/nemo_vad.py` is a stable artifact-contract wrapper and normalization step; use `--delegate-cmd` to call your pinned NeMo VAD runner or pass precomputed VAD outputs.
+- In strict offline runs, prefer `restore_from(local_path)` style NeMo loading in wrappers and avoid `from_pretrained(...)`.
 
 ## Offline compliance controls (implemented)
 
@@ -94,3 +103,7 @@ Per meeting:
 - `reproducibility_report.json` (config digest, environment snapshot, determinism settings, code hashes)
 - `stage_trace.jsonl` (stage timings + status events)
 - `run_manifest.json` (compact deterministic artifact summary + digest)
+
+Recommended strict config profile:
+
+- `configs/pipeline.nemo.llama.strict_offline.yaml`
