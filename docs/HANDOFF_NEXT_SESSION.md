@@ -24,6 +24,13 @@ This handoff captures the current implementation state of the AMI-only, NeMo-cen
     - evidence snippets
     - hybrid summary-guided chunk selection (fewer calls, better precision/speed)
     - shared model reuse across summarize + extract in one run
+  - Transcript normalization:
+    - configurable `rule` / `spacy` mode
+    - offline-safe `spacy.blank("en")` fallback when model package is unavailable
+  - Retrieval layer:
+    - optional retrieval stage implemented
+    - lexical offline retrieval always available
+    - optional FAISS + sentence-transformers path when local dependencies are present
 - Evaluation:
   - `WER`, `CER`
   - `cpWER`
@@ -43,6 +50,7 @@ Per meeting (`artifacts/ami/{meeting_id}/`):
 - `stage_trace.jsonl` (stage-level start/end events + timings + summaries)
 - `preflight_offline_audit.json` (offline compliance checks)
 - `reproducibility_report.json` (determinism report, environment snapshot, code provenance hashes)
+- `retrieval_results.json` (when retrieval is enabled)
 
 Determinism controls:
 
@@ -104,6 +112,7 @@ Recent test status:
 - Strict byte-for-byte determinism is not guaranteed on GPU; risks are tracked and can be gated.
 - `DER` implementation is approximate (documented no-overlap interval method) and suitable for comparative tuning, not canonical external scoring.
 - DVC/MLflow integration is implemented as scaffold + hooks; full experiment protocol/automation is still partial.
+- Retrieval defaults to lexical mode; FAISS mode is optional and dependency-gated.
 - MLflow file store emits a future deprecation warning in current installed version (test warning only; still works now).
 
 ## Last verified commands (examples)

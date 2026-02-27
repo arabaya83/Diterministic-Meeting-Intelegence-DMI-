@@ -1,5 +1,6 @@
 pipeline:
   seed: 42
+  # Chunk IDs remain stable when canonical turn ordering is unchanged.
   chunk:
     target_words: 220
     overlap_words: 40
@@ -33,6 +34,7 @@ paths:
   models_dir: models
 
 runtime:
+  # Offline-first: after one-time model acquisition, no network calls at runtime.
   offline: true
   fail_on_missing_models: false
   overwrite: true

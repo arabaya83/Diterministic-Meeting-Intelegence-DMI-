@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+"""Sequential batch runner for AMI pipeline execution and validation.
+
+Primary responsibilities:
+- deterministic meeting selection order
+- resume/skip semantics via `run_manifest.json`
+- per-meeting and aggregate batch logs
+- artifact contract validation
+- optional post-run speech metrics evaluation
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -44,6 +54,7 @@ REQUIRED_MEETING_FILES = [
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build CLI parser for sequential batch execution workflow."""
     p = argparse.ArgumentParser(
         description="Sequential AMI NeMo batch runner with resume, timing logs, and artifact validation"
     )
@@ -82,6 +93,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    """CLI entry point for sequential batch execution."""
     args = build_parser().parse_args()
 
     cfg_path = Path(args.config)

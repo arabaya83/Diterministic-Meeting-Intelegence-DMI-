@@ -1,18 +1,37 @@
+"""AMI annotation parsing utilities.
+
+This module loads AMI XML word-level annotations and converts them into
+deterministic token/utterance structures consumed by VAD/diarization mock
+fallbacks and evaluation helpers.
+"""
+
 from __future__ import annotations
 
 import html
 import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import Any
 
 
 def _localname(tag: str) -> str:
+    """Return XML local tag name without namespace prefix."""
     if "}" in tag:
         return tag.rsplit("}", 1)[1]
     return tag
 
 
-def load_word_tokens(annotations_dir: Path, meeting_id: str) -> list[dict]:
+def load_word_tokens(annotations_dir: Path, meeting_id: str) -> list[dict[str, Any]]:
+    """Load AMI word tokens for a meeting from XML annotations.
+
+    Args:
+        annotations_dir: Root annotation directory containing `words/`.
+        meeting_id: AMI meeting identifier.
+
+    Returns:
+        list[dict[str, Any]]: Time-sorted token rows with speaker letter,
+        text, and punctuation flags.
+    """
     words_dir = annotations_dir / "words"
     pattern = f"{meeting_id}.*.words.xml"
     tokens: list[dict] = []
@@ -42,11 +61,24 @@ def load_word_tokens(annotations_dir: Path, meeting_id: str) -> list[dict]:
                     "is_punc": elem.attrib.get("punc") == "true",
                 }
             )
+    # Stable temporal + speaker sort is required for deterministic utterance
+    # grouping and reproducible reference text generation.
     tokens.sort(key=lambda t: (t["start"], t["end"], t["speaker_letter"]))
     return tokens
 
 
-def build_utterances(tokens: list[dict], max_pause_sec: float = 1.2, max_dur_sec: float = 30.0) -> list[dict]:
+def build_utterances(
+    tokens: list[dict[str, Any]],
+    max_pause_sec: float = 1.2,
+    max_dur_sec: float = 30.0,
+) -> list[dict[str, Any]]:
+    """Group word tokens into speaker-homogeneous utterances.
+
+    Split rules:
+    - speaker change
+    - pause larger than `max_pause_sec`
+    - utterance duration reaching `max_dur_sec`
+    """
     utterances: list[dict] = []
     if not tokens:
         return utterances
@@ -84,7 +116,8 @@ def build_utterances(tokens: list[dict], max_pause_sec: float = 1.2, max_dur_sec
     return utterances
 
 
-def _finalize_utterance(cur: dict) -> dict:
+def _finalize_utterance(cur: dict[str, Any]) -> dict[str, Any]:
+    """Convert in-progress utterance token buffer into persisted row."""
     pieces: list[str] = []
     for tok in cur["tokens"]:
         if tok["is_punc"] and pieces:
@@ -101,7 +134,8 @@ def _finalize_utterance(cur: dict) -> dict:
     }
 
 
-def reference_plain_text(tokens: list[dict]) -> str:
+def reference_plain_text(tokens: list[dict[str, Any]]) -> str:
+    """Build flattened reference transcript text from AMI tokens."""
     pieces: list[str] = []
     for tok in tokens:
         if tok["is_punc"] and pieces:
@@ -109,4 +143,3 @@ def reference_plain_text(tokens: list[dict]) -> str:
         else:
             pieces.append(tok["text"])
     return " ".join(pieces).strip()
-

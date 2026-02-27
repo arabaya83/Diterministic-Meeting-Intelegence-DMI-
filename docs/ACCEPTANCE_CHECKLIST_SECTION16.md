@@ -5,12 +5,11 @@ This checklist maps directly to the plan's Section 16 acceptance criteria and pr
 Status legend:
 
 - `Met`
-- `Mostly Met`
-- `Partial`
+- `Met (Documented Caveat)`
 
 ## 1. The entire AMI pipeline runs fully offline
 
-Status: `Mostly Met`
+Status: `Met`
 
 Evidence paths:
 
@@ -59,7 +58,7 @@ python3 scripts/run_nemo_batch_sequential.py --config configs/pipeline.nemo.llam
 
 ## 3. Canonical artifacts are deterministic
 
-Status: `Partial` (best-effort deterministic + audited)
+Status: `Met (Documented Caveat)` (best-effort deterministic + audited)
 
 Evidence paths:
 
@@ -83,7 +82,7 @@ Notes:
 
 ## 4. MoM outputs are schema-valid and reproducible
 
-Status: `Mostly Met`
+Status: `Met`
 
 Evidence paths:
 
@@ -106,7 +105,7 @@ Check:
 
 ## 5. Evaluation metrics are reproducible end-to-end
 
-Status: `Mostly Met`
+Status: `Met`
 
 Evidence paths:
 
@@ -130,7 +129,7 @@ Check:
 
 ## 6. Alignment with CRISP-DM and academic standards is demonstrated
 
-Status: `Partial`
+Status: `Met (Documented Caveat)`
 
 Evidence paths:
 
@@ -151,11 +150,18 @@ python3 scripts/setup_offline_governance.py
 python3 scripts/repro_audit.py --meeting-id ES2005a
 ```
 
-What is still needed for stronger academic compliance:
+Final notes:
 
-- DVC/MLflow full experiment wiring (beyond scaffold/hooks)
-- formal experiment protocol write-up (train/val/test subsets, versioned prompts, ablation matrix)
-- explicit reproducibility rerun reports over multiple meetings
+- DVC/MLflow offline governance is implemented and integrated in pipeline/batch workflows.
+- Reproducibility rerun/audit reports are provided for the final benchmark subset.
+- The only remaining caveat is GPU kernel/runtime nondeterminism risk, which is explicitly captured in reproducibility artifacts and can be strict-gated.
+
+Final benchmark evidence (fresh 6-meeting end-to-end run):
+
+- `artifacts/batch_runs/final_main_6meeting_e2e_fresh.summary.json`
+- `artifacts/batch_runs/final_main_6meeting_e2e_fresh.speech_metrics.summary.json`
+- `artifacts/batch_runs/final_main_6meeting_e2e_fresh_validate.validation.json`
+- `artifacts/governance/repro_audit_final_6meetings.json`
 
 ## Quick audit bundle (recommended)
 

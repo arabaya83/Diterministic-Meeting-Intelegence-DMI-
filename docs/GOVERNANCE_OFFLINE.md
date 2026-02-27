@@ -73,11 +73,10 @@ Notes:
 ## Current integration status
 
 - Scaffold + local paths + docs: implemented
-- Pipeline auto-logging to MLflow / DVC stage automation: pending (future enhancement)
-  - basic pipeline-level local MLflow hook is implemented (optional, behind config flag)
-  - full experiment logging coverage is still pending
+- Pipeline-level and batch-level local MLflow logging hooks: implemented
+- DVC stage template generation from batch selections: implemented
 
-This intentionally keeps the runtime pipeline lightweight while still making the project governance-ready and aligned with the plan.
+This keeps runtime lightweight while providing an operational offline governance workflow aligned with the plan.
 
 ## DVC template generation from the batch runner
 

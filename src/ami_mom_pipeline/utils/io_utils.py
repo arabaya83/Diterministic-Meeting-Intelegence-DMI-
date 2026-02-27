@@ -1,3 +1,10 @@
+"""Deterministic file I/O helpers for artifact persistence.
+
+All writers in this module enforce stable JSON key ordering and predictable row
+ordering for JSONL/CSV upserts. These guarantees are required by reproducibility
+audits and artifact-digest comparisons.
+"""
+
 from __future__ import annotations
 
 import csv
@@ -7,25 +14,30 @@ from typing import Any
 
 
 def ensure_dir(path: Path) -> Path:
+    """Create a directory (including parents) if missing."""
     path.mkdir(parents=True, exist_ok=True)
     return path
 
 
 def stable_json_dumps(data: Any) -> str:
+    """Serialize JSON with stable key ordering and trailing newline."""
     return json.dumps(data, ensure_ascii=True, sort_keys=True, indent=2) + "\n"
 
 
 def write_json(path: Path, data: Any) -> None:
+    """Write JSON artifact using stable serialization settings."""
     ensure_dir(path.parent)
     path.write_text(stable_json_dumps(data), encoding="utf-8")
 
 
 def write_text(path: Path, text: str) -> None:
+    """Write UTF-8 text artifact, creating parent directory if required."""
     ensure_dir(path.parent)
     path.write_text(text, encoding="utf-8")
 
 
 def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
+    """Write JSON Lines file in provided row order."""
     ensure_dir(path.parent)
     with path.open("w", encoding="utf-8") as f:
         for row in rows:
@@ -34,6 +46,10 @@ def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
 
 
 def upsert_jsonl(path: Path, row: dict[str, Any], key: str) -> None:
+    """Upsert a JSONL record by key, then sort rows by key.
+
+    Sorting makes aggregate artifacts deterministic across run order.
+    """
     existing: list[dict[str, Any]] = []
     if path.exists():
         with path.open("r", encoding="utf-8") as f:
@@ -55,6 +71,13 @@ def upsert_jsonl(path: Path, row: dict[str, Any], key: str) -> None:
 
 
 def upsert_csv(path: Path, row: dict[str, Any], key: str) -> None:
+    """Upsert a CSV record by key, then sort rows by key.
+
+    Args:
+        path: CSV path to update/create.
+        row: Row values to insert/replace.
+        key: Primary-key column used for deterministic upsert.
+    """
     ensure_dir(path.parent)
     rows: list[dict[str, Any]] = []
     if path.exists():
@@ -75,4 +98,3 @@ def upsert_csv(path: Path, row: dict[str, Any], key: str) -> None:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
-

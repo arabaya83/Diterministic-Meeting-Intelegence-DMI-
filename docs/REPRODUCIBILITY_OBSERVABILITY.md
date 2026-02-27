@@ -17,6 +17,7 @@ For each meeting run (`artifacts/ami/{meeting_id}/`):
   - includes compact stage summaries when available
 - `run_manifest.json`
   - compact stage outputs summary
+  - includes retrieval stage summary when retrieval is enabled
   - artifact digest (`artifact_digest`) over deterministic stage artifacts
   - backend selections and config digest reference
 - `preflight_offline_audit.json`
@@ -28,6 +29,9 @@ For each meeting run (`artifacts/ami/{meeting_id}/`):
   - environment snapshot
   - determinism settings report (Python/NumPy/PyTorch best effort)
   - code provenance hashes for core pipeline/backend/scripts
+- `retrieval_results.json` (when retrieval is enabled)
+  - selected evidence chunks and scores
+  - optional FAISS metadata when FAISS mode is enabled
 
 ## Determinism controls (best effort)
 
@@ -89,6 +93,18 @@ The preflight audit currently checks:
 - local-only model/config paths (no `http://` / `https://`)
 - command templates for explicit URL/downloader usage (`curl`, `wget`)
 - offline-related env flags presence (warning-level)
+
+## Normalization reproducibility
+
+Normalization mode is explicit in config and recorded in canonical metadata:
+
+- `pipeline.normalization.mode` (`rule` or `spacy`)
+- `pipeline.normalization.spacy_model`
+- per-meeting canonical metadata includes:
+  - `metadata.normalization.mode_requested`
+  - `metadata.normalization.mode_used`
+
+In `spacy` mode, the pipeline uses `en_core_web_sm` when available and falls back to `spacy.blank("en")` offline.
 
 ## Artifact digest behavior
 

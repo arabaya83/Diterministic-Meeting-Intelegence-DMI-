@@ -1,3 +1,9 @@
+"""Core stage-based AMI pipeline orchestration.
+
+This module coordinates all stages from ingest through evaluation and writes
+stage artifacts, run manifests, and aggregate evaluation outputs.
+"""
+
 from __future__ import annotations
 
 import hashlib
@@ -42,6 +48,8 @@ from .utils.traceability import (
 
 @dataclass
 class PipelinePaths:
+    """Resolved run-time paths for one meeting pipeline execution."""
+
     raw_audio_dir: Path
     annotations_dir: Path
     staged_dir: Path
@@ -51,6 +59,7 @@ class PipelinePaths:
 
 
 def resolve_paths(cfg: AppConfig, meeting_id: str) -> PipelinePaths:
+    """Resolve and create directory paths used by a meeting run."""
     raw_audio_dir = Path(cfg.paths.raw_audio_dir)
     annotations_dir = Path(cfg.paths.annotations_dir)
     staged_dir = Path(cfg.paths.staged_dir)
@@ -70,6 +79,7 @@ def resolve_paths(cfg: AppConfig, meeting_id: str) -> PipelinePaths:
 
 
 def list_meetings(cfg: AppConfig) -> list[str]:
+    """List AMI meeting ids discovered from raw audio filenames."""
     raw_audio_dir = Path(cfg.paths.raw_audio_dir)
     meetings = []
     for p in sorted(raw_audio_dir.glob("*.Mix-Headset.wav")):
@@ -79,6 +89,11 @@ def list_meetings(cfg: AppConfig) -> list[str]:
 
 
 def run_pipeline(cfg: AppConfig, meeting_id: str) -> dict:
+    """Execute the full pipeline for one meeting id.
+
+    Returns:
+        dict: Manifest dictionary persisted as `run_manifest.json`.
+    """
     mlflow_run = None
     mlflow_mod = None
     mlflow_disabled_reason = None
@@ -295,6 +310,7 @@ def run_pipeline(cfg: AppConfig, meeting_id: str) -> dict:
 
 
 def stage_ingest(cfg: AppConfig, paths: PipelinePaths, meeting_id: str) -> dict:
+    """Ingest raw audio, stage WAV, and persist QC/provenance artifacts."""
     raw_wav = paths.raw_audio_dir / f"{meeting_id}.Mix-Headset.wav"
     if not raw_wav.exists():
         raise FileNotFoundError(f"Missing raw audio: {raw_wav}")
@@ -323,6 +339,7 @@ def stage_ingest(cfg: AppConfig, paths: PipelinePaths, meeting_id: str) -> dict:
 
 
 def stage_vad(cfg: AppConfig, paths: PipelinePaths, meeting_id: str, ingest_out: dict, utterances: list[dict]) -> dict:
+    """Produce VAD artifacts using NeMo backend or deterministic mock path."""
     if cfg.pipeline.speech_backend.mode == "nemo":
         backend = NemoSpeechBackend(cfg)
         return backend.run_vad(
@@ -351,6 +368,7 @@ def stage_vad(cfg: AppConfig, paths: PipelinePaths, meeting_id: str, ingest_out:
 
 
 def stage_diarization(cfg: AppConfig, paths: PipelinePaths, meeting_id: str, vad_out: dict, utterances: list[dict]) -> dict:
+    """Produce diarization artifacts using NeMo backend or mock fallback."""
     if cfg.pipeline.speech_backend.mode == "nemo":
         backend = NemoSpeechBackend(cfg)
         return backend.run_diarization(
@@ -387,6 +405,7 @@ def stage_diarization(cfg: AppConfig, paths: PipelinePaths, meeting_id: str, vad
 
 
 def stage_asr(cfg: AppConfig, paths: PipelinePaths, meeting_id: str, diar_out: dict, token_cache: list[dict]) -> dict:
+    """Produce ASR segments/transcript artifacts using configured speech backend."""
     if cfg.pipeline.speech_backend.mode == "nemo":
         backend = NemoSpeechBackend(cfg)
         return backend.run_asr(
@@ -443,6 +462,7 @@ def stage_asr(cfg: AppConfig, paths: PipelinePaths, meeting_id: str, diar_out: d
 
 
 def stage_normalize_and_canonicalize(cfg: AppConfig, paths: PipelinePaths, meeting_id: str, asr_out: dict, ingest_out: dict) -> dict:
+    """Write raw/normalized transcript views and canonical meeting record."""
     turns: list[TranscriptTurn] = []
     raw_records = []
     for seg in asr_out["segments"]:
@@ -487,6 +507,7 @@ def stage_normalize_and_canonicalize(cfg: AppConfig, paths: PipelinePaths, meeti
 
 
 def stage_chunking(cfg: AppConfig, paths: PipelinePaths, meeting_id: str, canon_out: dict) -> dict:
+    """Split canonical transcript turns into stable overlapping chunks."""
     turns = canon_out["canonical"]["transcript_turns"]
     target = cfg.pipeline.chunk.target_words
     overlap = cfg.pipeline.chunk.overlap_words
@@ -582,6 +603,7 @@ def stage_summarize(
     chunk_out: dict,
     llama_backend=None,
 ) -> dict:
+    """Generate and persist Minutes of Meeting summary artifacts."""
     turns = canon_out["canonical"]["transcript_turns"]
     chunks_for_summary = _annotate_chunks_with_asr_confidence(paths, chunk_out["chunks"])
     if cfg.pipeline.summarization_backend.mode == "llama_cpp":
@@ -655,6 +677,7 @@ def stage_extract(
     summary_out: dict | None = None,
     llama_backend=None,
 ) -> dict:
+    """Generate and persist structured decisions/action items artifacts."""
     if cfg.pipeline.extraction_backend.mode == "llama_cpp":
         backend = llama_backend or LlamaCppBackend(cfg)
         output = backend.extract(meeting_id=meeting_id, chunks=chunk_out["chunks"], summary=summary_out or {})
@@ -727,6 +750,7 @@ def stage_evaluate(
     summary_out: dict,
     extract_out: dict,
 ) -> dict:
+    """Compute ASR metrics and structural MoM quality checks."""
     hyp = " ".join(seg["text"] for seg in asr_out["segments"])
     ref = reference_plain_text(token_cache) if token_cache else ""
     wer = _wer(ref, hyp) if ref else None
@@ -766,6 +790,7 @@ def stage_evaluate(
 
 
 def normalize_text(text: str) -> str:
+    """Apply deterministic lightweight normalization for transcript text."""
     text = text.strip()
     text = re.sub(r"\s+", " ", text)
     text = re.sub(r"\buh\b|\bum\b", "", text, flags=re.I)
