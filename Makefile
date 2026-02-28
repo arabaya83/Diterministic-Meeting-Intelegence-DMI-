@@ -1,7 +1,7 @@
 PYTHONPATH ?= src
 PYTEST ?= pytest
 
-.PHONY: test-repro test-governance test-mlflow test-batch test-all-local repro-audit evidence-bundle dvc-template-smoke acceptance-bundle
+.PHONY: test-repro test-governance test-mlflow test-batch test-all-local repro-audit evidence-bundle dvc-template-smoke acceptance-bundle ui-dev ui-test ui-build ui-backend ui-frontend
 
 test-repro:
 	PYTHONPATH=$(PYTHONPATH) $(PYTEST) -q \
@@ -51,3 +51,22 @@ acceptance-bundle:
 	python3 scripts/run_nemo_batch_sequential.py --config configs/pipeline.nemo.llama.strict_offline.yaml --meeting-id ES2005a --validate-only --dvc-template single
 	python3 scripts/repro_audit.py --config configs/pipeline.nemo.llama.strict_offline.yaml --meeting-id ES2005a
 	python3 scripts/generate_acceptance_evidence_bundle.py --meeting-id ES2005a --include-batch-runs
+
+ui-backend:
+	PYTHONPATH=ui/backend python3 -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+
+ui-frontend:
+	npm --prefix ui/frontend run dev -- --host 127.0.0.1 --port 5173
+
+ui-dev:
+	bash -lc 'PYTHONPATH=ui/backend python3 -m uvicorn app.main:app --host 127.0.0.1 --port 8000 & backend_pid=$$!; trap "kill $$backend_pid" EXIT; npm --prefix ui/frontend run dev -- --host 127.0.0.1 --port 5173'
+
+ui-test:
+	PYTHONPATH=ui/backend python3 -m pytest -q ui/backend/tests
+	npm --prefix ui/frontend run test
+
+ui-build:
+	cd ui/frontend && npx tsc -b --clean
+	npm --prefix ui/frontend run build
+	mkdir -p ui/backend/dist
+	tar -czf ui/backend/dist/ami-ui-backend-src.tgz ui/backend/app ui/backend/pyproject.toml

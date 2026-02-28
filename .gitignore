@@ -37,6 +37,14 @@ artifacts/mlruns/
 *.tmp
 *.temp
 
+# UI frontend/backend generated files
+ui/frontend/node_modules/
+ui/frontend/dist/
+ui/frontend/*.tsbuildinfo
+ui/frontend/*.js
+ui/frontend/*.d.ts
+ui/backend/dist/
+
 # Notebook noise
 .ipynb_checkpoints/
 

@@ -1,6 +1,3 @@
-# meeting_sum_app
-meeting summarization Application
-=======
 # AMI Meeting Understanding Pipeline (Offline-First, NeMo + llama.cpp)
 
 This repository contains a stage-based AMI meeting understanding pipeline aligned to the provided NeMo-centric architecture:
