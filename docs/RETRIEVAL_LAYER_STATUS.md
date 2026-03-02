@@ -10,9 +10,10 @@ The plan marks retrieval as optional. It is now implemented as an optional stage
 
 Current limiting factors are:
 
-- speech hypothesis quality (`WER`, `cpWER`, `DER`)
+- speech hypothesis quality (`WER`, `cpWER`, approximate `DER`)
 - diarization quality on harder meetings
 - MoM extraction precision/recall tuning under noisy ASR
+- summary coverage/alignment against AMI abstractive references
 
 - offline lexical retrieval stage is always available (no extra dependencies)
 - optional FAISS + sentence-transformers path is available when local dependencies/models are present

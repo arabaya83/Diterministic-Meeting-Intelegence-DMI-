@@ -93,7 +93,13 @@ def upsert_csv(path: Path, row: dict[str, Any], key: str) -> None:
     if not replaced:
         rows.append({k: str(v) for k, v in row.items()})
     rows.sort(key=lambda r: r.get(key, ""))
-    fieldnames = list(rows[0].keys()) if rows else list(row.keys())
+    fieldnames: list[str] = []
+    for rec in rows:
+        for name in rec.keys():
+            if name not in fieldnames:
+                fieldnames.append(name)
+    if not fieldnames:
+        fieldnames = list(row.keys())
     with path.open("w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()

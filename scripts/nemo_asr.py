@@ -9,7 +9,6 @@ import math
 import tempfile
 import wave
 from pathlib import Path
-from statistics import mean
 
 from nemo_contract import ensure_dir, write_json, write_text
 
@@ -50,12 +49,11 @@ def main() -> int:
     args = parse_args()
     out_dir = ensure_dir(Path(args.out_dir))
     asr_json = out_dir / "asr_segments.json"
-    conf_json = out_dir / "asr_confidence.json"
     txt_path = out_dir / "full_transcript.txt"
 
     if args.input_asr_json:
         segs = json.loads(Path(args.input_asr_json).read_text(encoding="utf-8"))
-        finalize_outputs(segs, args.meeting_id, asr_json, conf_json, txt_path)
+        finalize_outputs(segs, asr_json, txt_path)
         return 0
 
     if args.try_nemo_api:
@@ -69,7 +67,7 @@ def main() -> int:
             split_max_duration_sec=float(args.split_max_duration_sec),
             min_segment_duration_sec=float(args.min_segment_duration_sec),
         )
-        finalize_outputs(segs, args.meeting_id, asr_json, conf_json, txt_path)
+        finalize_outputs(segs, asr_json, txt_path)
         return 0
 
     print(
@@ -79,22 +77,12 @@ def main() -> int:
     return 2
 
 
-def finalize_outputs(segs: list[dict], meeting_id: str, asr_json: Path, conf_json: Path, txt_path: Path) -> None:
+def finalize_outputs(segs: list[dict], asr_json: Path, txt_path: Path) -> None:
     for s in segs:
         s.setdefault("source", "nemo_asr")
         s.setdefault("confidence", 0.0)
     segs.sort(key=lambda s: (s["start"], s["end"], s.get("speaker", "")))
     write_json(asr_json, segs)
-    confs = [float(s.get("confidence", 0.0) or 0.0) for s in segs]
-    conf = {
-        "meeting_id": meeting_id,
-        "segment_count": len(segs),
-        "mean_confidence": round(mean(confs), 4) if confs else 0.0,
-        "min_confidence": round(min(confs), 4) if confs else 0.0,
-        "max_confidence": round(max(confs), 4) if confs else 0.0,
-        "nonzero_confidence_count": sum(1 for c in confs if c > 0.0),
-    }
-    write_json(conf_json, conf)
     lines = [f"[{s['start']:.2f}-{s['end']:.2f}] {s.get('speaker','SPEAKER_1')}: {s.get('text','')}" for s in segs]
     write_text(txt_path, "\n".join(lines) + ("\n" if lines else ""))
 
@@ -127,6 +115,9 @@ def run_nemo_asr_api(
         model = ASRModel.restore_from(str(model_path))
     else:
         raise RuntimeError("For offline reproducibility, pass a local .nemo file to --model")
+
+    enable_confidence_preservation(model)
+    disable_cuda_graph_decoder(model)
 
     with contextlib.suppress(Exception):
         model.eval()
@@ -197,6 +188,133 @@ def run_nemo_asr_api(
     return segs
 
 
+def disable_cuda_graph_decoder(model) -> None:
+    """Disable NeMo RNNT/TDT CUDA-graph decoding when the model exposes that knob.
+
+    Some Parakeet/TDT combinations crash in NeMo's CUDA-graph decoder path on
+    this workstation stack. Force the safer non-graph greedy decoder instead.
+    """
+    changed = False
+    logged_attr = "_ami_cuda_graph_decoder_disabled_logged"
+    with contextlib.suppress(Exception):
+        decoding_cfg = getattr(model, "cfg", {}).get("decoding")
+        if decoding_cfg and "greedy" in decoding_cfg:
+            decoding_cfg.greedy["use_cuda_graph_decoder"] = False
+            changed = True
+            with contextlib.suppress(Exception):
+                model.change_decoding_strategy(decoding_cfg)
+
+    decoding = getattr(model, "decoding", None)
+    if decoding is None:
+        return
+
+    with contextlib.suppress(Exception):
+        cfg = getattr(decoding, "cfg", None)
+        if cfg and "greedy" in cfg:
+            cfg.greedy["use_cuda_graph_decoder"] = False
+            changed = True
+
+    with contextlib.suppress(Exception):
+        if hasattr(decoding, "use_cuda_graph_decoder"):
+            decoding.use_cuda_graph_decoder = False
+            changed = True
+
+    decoding_computer = getattr(decoding, "decoding", None)
+    if decoding_computer is not None:
+        with contextlib.suppress(Exception):
+            if hasattr(decoding_computer, "use_cuda_graph_decoder"):
+                decoding_computer.use_cuda_graph_decoder = False
+                changed = True
+        with contextlib.suppress(Exception):
+            if hasattr(decoding_computer, "allow_cuda_graphs"):
+                decoding_computer.allow_cuda_graphs = False
+                changed = True
+        with contextlib.suppress(Exception):
+            if hasattr(decoding_computer, "force_cuda_graphs_mode"):
+                decoding_computer.force_cuda_graphs_mode("no_graphs")
+                changed = True
+        with contextlib.suppress(Exception):
+            if hasattr(decoding_computer, "disable_cuda_graphs"):
+                decoding_computer.disable_cuda_graphs()
+                changed = True
+        with contextlib.suppress(Exception):
+            if hasattr(decoding_computer, "cuda_graphs_mode"):
+                decoding_computer.cuda_graphs_mode = None
+                changed = True
+
+    if changed and not getattr(model, logged_attr, False):
+        print("NeMo ASR: disabled CUDA-graph decoder path for RNNT/TDT decoding", flush=True)
+        with contextlib.suppress(Exception):
+            setattr(model, logged_attr, True)
+
+
+def enable_confidence_preservation(model) -> None:
+    """Best-effort enablement of NeMo confidence outputs on RNNT/TDT models.
+
+    NeMo exposes confidence-bearing fields such as `word_confidence`,
+    `token_confidence`, and `frame_confidence` only when the decoding config
+    explicitly preserves them. Older model/runtime combinations may ignore some
+    of these settings; in that case the wrapper still falls back to 0.0.
+    """
+    changed = False
+    logged_attr = "_ami_confidence_preservation_logged"
+
+    with contextlib.suppress(Exception):
+        decoding_cfg = getattr(model, "cfg", {}).get("decoding")
+        if decoding_cfg:
+            confidence_cfg = decoding_cfg.get("confidence_cfg")
+            if confidence_cfg is None:
+                decoding_cfg["confidence_cfg"] = {}
+                confidence_cfg = decoding_cfg["confidence_cfg"]
+            confidence_cfg["preserve_frame_confidence"] = True
+            confidence_cfg["preserve_token_confidence"] = True
+            confidence_cfg["preserve_word_confidence"] = True
+            method_cfg = confidence_cfg.get("method_cfg") or {}
+            method_cfg.setdefault("name", "max_prob")
+            confidence_cfg["method_cfg"] = method_cfg
+
+            greedy_cfg = decoding_cfg.get("greedy")
+            if greedy_cfg is not None:
+                greedy_cfg["preserve_frame_confidence"] = True
+                greedy_cfg["preserve_token_confidence"] = True
+                greedy_cfg["preserve_word_confidence"] = True
+                greedy_cfg["confidence_method_cfg"] = method_cfg
+            changed = True
+            with contextlib.suppress(Exception):
+                model.change_decoding_strategy(decoding_cfg)
+
+    decoding = getattr(model, "decoding", None)
+    cfg = getattr(decoding, "cfg", None) if decoding is not None else None
+    if cfg is not None:
+        with contextlib.suppress(Exception):
+            confidence_cfg = getattr(cfg, "confidence_cfg", None)
+            if confidence_cfg is None:
+                cfg.confidence_cfg = {}
+                confidence_cfg = cfg.confidence_cfg
+            confidence_cfg["preserve_frame_confidence"] = True
+            confidence_cfg["preserve_token_confidence"] = True
+            confidence_cfg["preserve_word_confidence"] = True
+            method_cfg = confidence_cfg.get("method_cfg") or {}
+            method_cfg.setdefault("name", "max_prob")
+            confidence_cfg["method_cfg"] = method_cfg
+            changed = True
+        with contextlib.suppress(Exception):
+            greedy_cfg = getattr(cfg, "greedy", None)
+            if greedy_cfg is not None:
+                greedy_cfg["preserve_frame_confidence"] = True
+                greedy_cfg["preserve_token_confidence"] = True
+                greedy_cfg["preserve_word_confidence"] = True
+                greedy_cfg["confidence_method_cfg"] = confidence_cfg.get("method_cfg") or {"name": "max_prob"}
+                changed = True
+        with contextlib.suppress(Exception):
+            model.change_decoding_strategy(cfg)
+
+    if changed and not getattr(model, logged_attr, False):
+        print("NeMo ASR: enabled confidence preservation on decoder outputs", flush=True)
+        with contextlib.suppress(Exception):
+            setattr(model, logged_attr, True)
+
+
 def transcribe_single_hyp(model, wav_path: Path, batch_size: int = 1) -> dict:
     out = _call_transcribe_compat(model, [wav_path], batch_size=batch_size)
     normalized = normalize_transcribe_outputs(out)
@@ -211,6 +329,7 @@ def transcribe_many_hyps(model, wav_paths: list[Path], batch_size: int = 8) -> l
 
 
 def _call_transcribe_compat(model, wav_paths: list[Path], batch_size: int = 1):
+    disable_cuda_graph_decoder(model)
     path_list = [str(p) for p in wav_paths]
     try:
         sig = inspect.signature(model.transcribe)
@@ -221,10 +340,13 @@ def _call_transcribe_compat(model, wav_paths: list[Path], batch_size: int = 1):
     # Try the most common variants across NeMo versions.
     attempts = []
     if "paths2audio_files" in params:
+        attempts.append(((), {"paths2audio_files": path_list, "batch_size": batch_size, "return_hypotheses": True}))
         attempts.append(((), {"paths2audio_files": path_list, "batch_size": batch_size}))
     if "audio" in params:
+        attempts.append(((), {"audio": path_list, "batch_size": batch_size, "return_hypotheses": True}))
         attempts.append(((), {"audio": path_list, "batch_size": batch_size}))
     # Positional list form works in multiple versions.
+    attempts.append(((path_list,), {"batch_size": batch_size, "return_hypotheses": True}))
     attempts.append(((path_list,), {"batch_size": batch_size}))
     attempts.append(((path_list,), {}))
 
@@ -305,7 +427,14 @@ def _extract_confidence(item) -> float:
             # Positive non-bounded scores are ambiguous; skip.
 
     # As fallback, derive from token/confidence-like lists if present.
-    for attr in ("token_confidence", "token_confidences", "char_confidence", "char_confidences"):
+    for attr in (
+        "word_confidence",
+        "token_confidence",
+        "token_confidences",
+        "frame_confidence",
+        "char_confidence",
+        "char_confidences",
+    ):
         vals = None
         if isinstance(item, dict):
             vals = item.get(attr)
@@ -339,7 +468,12 @@ def _mean_bounded(vals) -> float | None:
     if not isinstance(vals, (list, tuple)) or not vals:
         return None
     xs = []
-    for v in vals:
+    stack = list(vals)
+    while stack:
+        v = stack.pop()
+        if isinstance(v, (list, tuple)):
+            stack.extend(v)
+            continue
         f = _as_float(v)
         if f is None or not math.isfinite(f):
             continue

@@ -72,7 +72,6 @@ export interface EvalSummaryResponse {
 export interface MeetingEvalResponse {
   meeting_id: string;
   metrics: Record<string, unknown>;
-  confidence?: Record<string, unknown> | null;
   quality_checks?: Record<string, unknown> | null;
 }
 
@@ -172,6 +171,7 @@ export interface RunProgressSummary {
 export interface RunStatusResponse {
   run_id: string;
   meeting_id: string;
+  meeting_ids: string[];
   config: string;
   mode: RunMode;
   status: RunState;
@@ -189,6 +189,7 @@ export interface RunStatusResponse {
 export interface MeetingRunEntry {
   run_id: string | null;
   meeting_id: string;
+  meeting_ids: string[];
   config: string | null;
   mode: RunMode | null;
   status: string;

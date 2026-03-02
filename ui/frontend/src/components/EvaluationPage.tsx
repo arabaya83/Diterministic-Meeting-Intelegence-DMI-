@@ -21,7 +21,7 @@ export function EvaluationPage() {
 
   return (
     <div className="space-y-6">
-      <Panel title="Aggregate Evaluation" subtitle="WER, CER, cpWER, DER, and confidence metrics when available">
+      <Panel title="Aggregate Evaluation" subtitle="WER, CER, cpWER, DER, and ROUGE metrics from local evaluation outputs">
         {Object.keys(data.aggregate_metrics).length === 0 ? (
           <EmptyState message="No evaluation metrics are available yet." />
         ) : (

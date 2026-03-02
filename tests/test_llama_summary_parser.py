@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from ami_mom_pipeline.backends.llama_cpp_backend import LlamaCppBackend
 
 
@@ -34,3 +36,22 @@ def test_parse_summary_json_recovers_nested_json_in_summary_field() -> None:
     assert parsed is not None
     assert parsed["summary"] == "Clean summary text."
     assert parsed["key_points"] == ["Point A", "Point B"]
+
+
+def test_parse_summary_json_preserves_reference_style_sections() -> None:
+    payload = {
+        "summary": "Fallback summary text.",
+        "abstract": ["The team reviewed the interface design.", "They compared cost options."],
+        "actions": ["The designer will prepare a prototype."],
+        "decisions": ["The group chose a wheel interface."],
+        "problems": ["Whether to include an LCD screen."],
+        "key_points": ["Interface review"],
+        "discussion_points": ["Interface design"],
+        "follow_up": ["Prepare a prototype"],
+    }
+    parsed = LlamaCppBackend._parse_summary_json(json.dumps(payload))
+    assert parsed is not None
+    assert parsed["abstract"] == ["The team reviewed the interface design.", "They compared cost options."]
+    assert parsed["actions"] == ["The designer will prepare a prototype."]
+    assert parsed["decisions"] == ["The group chose a wheel interface."]
+    assert parsed["problems"] == ["Whether to include an LCD screen."]

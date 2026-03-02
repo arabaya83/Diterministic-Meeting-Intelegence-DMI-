@@ -14,6 +14,7 @@ def serialize_run(runner, record):
     return RunStatusResponse(
         run_id=record.run_id,
         meeting_id=record.meeting_id,
+        meeting_ids=record.meeting_ids,
         config=record.config,
         mode=record.mode,
         status=record.status,

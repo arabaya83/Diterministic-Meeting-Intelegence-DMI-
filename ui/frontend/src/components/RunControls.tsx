@@ -29,8 +29,10 @@ export function RunControls({
 }) {
   const [configs, setConfigs] = useState<ConfigEntry[]>([]);
   const [selectedMeeting, setSelectedMeeting] = useState(fixedMeetingId ?? "");
+  const [selectedMeetings, setSelectedMeetings] = useState<string[]>(fixedMeetingId ? [fixedMeetingId] : []);
   const [selectedConfig, setSelectedConfig] = useState("");
   const [mode, setMode] = useState<RunMode>("validate-only");
+  const [selectionMode, setSelectionMode] = useState<"single" | "batch">("single");
   const [showAdvancedConfigs, setShowAdvancedConfigs] = useState(false);
   const [activeRun, setActiveRun] = useState<RunStatusResponse | null>(null);
   const [meetingRuns, setMeetingRuns] = useState<MeetingRunEntry[]>([]);
@@ -38,6 +40,14 @@ export function RunControls({
   const [settledRunKey, setSettledRunKey] = useState<string | null>(null);
   const [socketFailed, setSocketFailed] = useState(false);
   const effectiveMeetingId = fixedMeetingId ?? selectedMeeting;
+  const effectiveMeetingIds = fixedMeetingId
+    ? [fixedMeetingId]
+    : selectionMode === "batch"
+      ? selectedMeetings
+      : effectiveMeetingId
+        ? [effectiveMeetingId]
+        : [];
+  const hasActiveRun = Boolean(activeRun && ["queued", "running"].includes(activeRun.status));
 
   useEffect(() => {
     if (!enabled) {
@@ -55,18 +65,24 @@ export function RunControls({
   useEffect(() => {
     if (fixedMeetingId) {
       setSelectedMeeting(fixedMeetingId);
+      setSelectedMeetings([fixedMeetingId]);
     }
   }, [fixedMeetingId]);
 
   useEffect(() => {
     if (!enabled || !effectiveMeetingId) {
+      setMeetingRuns([]);
       return;
     }
     if (!effectiveMeetingId) {
       return;
     }
+    if (!fixedMeetingId && selectionMode === "batch") {
+      setMeetingRuns([]);
+      return;
+    }
     api.getMeetingRuns(effectiveMeetingId).then(setMeetingRuns).catch(() => undefined);
-  }, [activeRun?.status, effectiveMeetingId, enabled]);
+  }, [activeRun?.status, effectiveMeetingId, enabled, fixedMeetingId, selectionMode]);
 
   useEffect(() => {
     if (!enabled || !activeRun || !["queued", "running"].includes(activeRun.status) || !socketFailed) {
@@ -112,10 +128,17 @@ export function RunControls({
     onRunSettled(activeRun);
   }, [activeRun, onRunSettled, settledRunKey]);
 
-  const canStart = enabled && Boolean(effectiveMeetingId) && Boolean(selectedConfig);
+  const canStart = enabled && effectiveMeetingIds.length > 0 && Boolean(selectedConfig) && !hasActiveRun;
   const selectedMeetingSummary = useMemo(
     () => availableMeetings.find((meeting) => meeting.meeting_id === effectiveMeetingId) ?? null,
     [availableMeetings, effectiveMeetingId],
+  );
+  const selectedMeetingSummaries = useMemo(
+    () =>
+      effectiveMeetingIds
+        .map((meetingId) => availableMeetings.find((meeting) => meeting.meeting_id === meetingId) ?? null)
+        .filter((meeting): meeting is MeetingListItem => meeting !== null),
+    [availableMeetings, effectiveMeetingIds],
   );
   const recommendedConfigs = useMemo(
     () => configs.filter((config) => isRecommendedConfig(config.name)),
@@ -137,16 +160,24 @@ export function RunControls({
   }, [selectedConfig, visibleConfigs]);
 
   async function handleStart() {
-    if (!canStart || !effectiveMeetingId) {
+    if (!canStart || effectiveMeetingIds.length === 0) {
       return;
     }
     setError(null);
     try {
-      const run = await api.createRun({
-        meeting_id: effectiveMeetingId,
-        config: selectedConfig,
-        mode,
-      });
+      const run =
+        effectiveMeetingIds.length === 1
+          ? await api.createRun({
+              meeting_id: effectiveMeetingIds[0],
+              meeting_ids: effectiveMeetingIds,
+              config: selectedConfig,
+              mode,
+            })
+          : await api.createRun({
+              meeting_ids: effectiveMeetingIds,
+              config: selectedConfig,
+              mode,
+            });
       setActiveRun(run);
       setSocketFailed(false);
     } catch (reason) {
@@ -167,6 +198,8 @@ export function RunControls({
     }
   }
 
+  const activeRunMeetingIds = activeRun ? activeRun.meeting_ids ?? [activeRun.meeting_id] : [];
+
   return (
     <Panel
       title={title ?? "Run Controls"}
@@ -178,21 +211,54 @@ export function RunControls({
         <>
           <div className="grid gap-4 lg:grid-cols-[1fr_1fr_220px_160px]">
             {!fixedMeetingId ? (
-              <label className="text-sm text-textSecondary">
-                Meeting
-                <select
-                  value={selectedMeeting}
-                  onChange={(event) => setSelectedMeeting(event.target.value)}
-                  className="mt-2 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-textPrimary"
-                >
-                  <option value="">Select meeting</option>
-                  {availableMeetings.map((meeting) => (
-                    <option key={meeting.meeting_id} value={meeting.meeting_id}>
-                      {meeting.meeting_id}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div className="space-y-3">
+                <label className="text-sm text-textSecondary">
+                  Selection
+                  <select
+                    value={selectionMode}
+                    onChange={(event) => setSelectionMode(event.target.value as "single" | "batch")}
+                    className="mt-2 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-textPrimary"
+                  >
+                    <option value="single">Single meeting</option>
+                    <option value="batch">Batch meetings</option>
+                  </select>
+                </label>
+                {selectionMode === "single" ? (
+                  <label className="text-sm text-textSecondary">
+                    Meeting
+                    <select
+                      value={selectedMeeting}
+                      onChange={(event) => setSelectedMeeting(event.target.value)}
+                      className="mt-2 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-textPrimary"
+                    >
+                      <option value="">Select meeting</option>
+                      {availableMeetings.map((meeting) => (
+                        <option key={meeting.meeting_id} value={meeting.meeting_id}>
+                          {meeting.meeting_id}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : (
+                  <label className="text-sm text-textSecondary">
+                    Meetings
+                    <select
+                      multiple
+                      value={selectedMeetings}
+                      onChange={(event) =>
+                        setSelectedMeetings(Array.from(event.target.selectedOptions, (option) => option.value))
+                      }
+                      className="mt-2 min-h-40 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-textPrimary"
+                    >
+                      {availableMeetings.map((meeting) => (
+                        <option key={meeting.meeting_id} value={meeting.meeting_id}>
+                          {meeting.meeting_id}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+              </div>
             ) : (
               <div className="rounded-lg border border-border bg-surface/70 p-3">
                 <p className="text-xs uppercase tracking-[0.18em] text-textSecondary">Meeting</p>
@@ -230,9 +296,32 @@ export function RunControls({
               disabled={!canStart}
               className="h-fit self-end rounded-md border border-accent/40 bg-accent/15 px-4 py-2 text-sm text-textPrimary disabled:cursor-not-allowed disabled:border-border disabled:bg-surface disabled:text-textSecondary"
             >
-              Start
+              {hasActiveRun ? "Run active" : "Start"}
             </button>
           </div>
+
+          {!fixedMeetingId && selectionMode === "batch" ? (
+            <div className="mt-4 rounded-lg border border-border bg-surface/60 p-4">
+              <p className="text-sm font-medium text-textPrimary">Batch selection</p>
+              <p className="mt-1 text-xs text-textSecondary">
+                {selectedMeetings.length === 0
+                  ? "Select one or more meetings to run together."
+                  : `${selectedMeetings.length} meetings selected`}
+              </p>
+              {selectedMeetings.length > 0 ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {selectedMeetings.map((meetingId) => (
+                    <span
+                      key={meetingId}
+                      className="rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-textPrimary"
+                    >
+                      {meetingId}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
 
           {configs.length > recommendedConfigs.length ? (
             <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-border bg-surface/50 px-3 py-2 text-sm">
@@ -251,7 +340,7 @@ export function RunControls({
             </div>
           ) : null}
 
-          {selectedMeetingSummary ? (
+          {selectedMeetingSummary && selectionMode === "single" ? (
             <div className="mt-4 rounded-lg border border-border bg-surface/60 p-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -262,6 +351,20 @@ export function RunControls({
                   state={selectedMeetingSummary.offline_preflight_ok ? "success" : "warn"}
                   label={selectedMeetingSummary.offline_preflight_ok ? "Audit OK" : "Audit Review"}
                 />
+              </div>
+            </div>
+          ) : null}
+
+          {!fixedMeetingId && selectionMode === "batch" && selectedMeetingSummaries.length > 0 ? (
+            <div className="mt-4 rounded-lg border border-border bg-surface/60 p-4">
+              <p className="text-sm font-medium text-textPrimary">Selected meetings</p>
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                {selectedMeetingSummaries.map((meeting) => (
+                  <div key={meeting.meeting_id} className="rounded-lg border border-border bg-card/70 p-3">
+                    <p className="text-sm font-medium text-textPrimary">{meeting.meeting_id}</p>
+                    <p className="mt-1 text-xs text-textSecondary">{formatDate(meeting.last_updated)}</p>
+                  </div>
+                ))}
               </div>
             </div>
           ) : null}
@@ -307,6 +410,12 @@ export function RunControls({
                         Open details
                       </Link>
                     </div>
+                  </div>
+                  <div>
+                    <p className="text-textSecondary">{activeRunMeetingIds.length > 1 ? "Meetings" : "Meeting"}</p>
+                    <p className="mt-1 text-textPrimary">
+                      {activeRunMeetingIds.length > 1 ? activeRunMeetingIds.join(", ") : activeRun.meeting_id}
+                    </p>
                   </div>
                   <div>
                     <p className="text-textSecondary">Config</p>
@@ -367,43 +476,47 @@ export function RunControls({
             </div>
           ) : null}
 
-          <div className="mt-4 rounded-lg border border-border bg-surface/60 p-4">
-            <p className="text-sm font-semibold text-textPrimary">Recent Runs For Meeting</p>
-            {meetingRuns.length === 0 ? (
-              <p className="mt-3 text-sm text-textSecondary">No runs recorded for this meeting in the current session or batch history.</p>
-            ) : (
-              <div className="mt-3 space-y-2">
-                {meetingRuns.slice(0, 6).map((run, index) => (
-                  <div key={`${run.run_id ?? run.started_at ?? index}`} className="rounded-md border border-border bg-card/60 p-3 text-sm">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="font-medium text-textPrimary">{run.mode ?? "run"}</span>
-                      <StatusBadge
-                        state={
-                          run.status === "ok" || run.status === "completed"
-                            ? "success"
-                            : run.status === "failed"
-                              ? "fail"
-                              : run.status === "not_run"
-                                ? "not_run"
-                                : "info"
-                        }
-                        label={formatHistoryStatus(run.status)}
-                      />
+          {(fixedMeetingId || selectionMode === "single") && effectiveMeetingId ? (
+            <div className="mt-4 rounded-lg border border-border bg-surface/60 p-4">
+              <p className="text-sm font-semibold text-textPrimary">Recent Runs For Meeting</p>
+              {meetingRuns.length === 0 ? (
+                <p className="mt-3 text-sm text-textSecondary">
+                  No runs recorded for this meeting in the current session or batch history.
+                </p>
+              ) : (
+                <div className="mt-3 space-y-2">
+                  {meetingRuns.slice(0, 6).map((run, index) => (
+                    <div key={`${run.run_id ?? run.started_at ?? index}`} className="rounded-md border border-border bg-card/60 p-3 text-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="font-medium text-textPrimary">{run.mode ?? "run"}</span>
+                        <StatusBadge
+                          state={
+                            run.status === "ok" || run.status === "completed"
+                              ? "success"
+                              : run.status === "failed"
+                                ? "fail"
+                                : run.status === "not_run"
+                                  ? "not_run"
+                                  : "info"
+                          }
+                          label={formatHistoryStatus(run.status)}
+                        />
+                      </div>
+                      <p className="mt-2 text-textSecondary">{run.config ?? "Unknown config"}</p>
+                      <p className="mt-1 text-xs text-textSecondary">
+                        {run.source === "live" ? "Live run" : "Batch history"} • {formatDate(run.started_at)}
+                      </p>
+                      {run.run_id ? (
+                        <Link to={`/runs/${run.run_id}`} className="mt-2 inline-block text-xs text-accent underline-offset-2 hover:underline">
+                          Open run details
+                        </Link>
+                      ) : null}
                     </div>
-                    <p className="mt-2 text-textSecondary">{run.config ?? "Unknown config"}</p>
-                    <p className="mt-1 text-xs text-textSecondary">
-                      {run.source === "live" ? "Live run" : "Batch history"} • {formatDate(run.started_at)}
-                    </p>
-                    {run.run_id ? (
-                      <Link to={`/runs/${run.run_id}`} className="mt-2 inline-block text-xs text-accent underline-offset-2 hover:underline">
-                        Open run details
-                      </Link>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : null}
         </>
       )}
     </Panel>

@@ -22,6 +22,7 @@ class RunRecord:
     run_id: str
     run_label: str
     meeting_id: str
+    meeting_ids: list[str]
     config: str
     mode: str
     status: str
@@ -56,15 +57,18 @@ class PipelineRunner:
     def create_run(self, request: RunCreateRequest) -> RunRecord:
         self.ensure_enabled()
         config_path = self._resolve_config(request.config)
-        self._validate_meeting_id(request.meeting_id)
+        meeting_ids = self._resolve_requested_meetings(request)
 
         run_id = uuid.uuid4().hex[:12]
-        run_label = f"ui_{request.mode.replace('-', '_')}_{request.meeting_id}_{run_id}"
+        primary_meeting = meeting_ids[0]
+        run_scope = primary_meeting if len(meeting_ids) == 1 else f"batch_{len(meeting_ids)}"
+        run_label = f"ui_{request.mode.replace('-', '_')}_{run_scope}_{run_id}"
         command = self._build_command(request, config_path, run_label)
         record = RunRecord(
             run_id=run_id,
             run_label=run_label,
-            meeting_id=request.meeting_id,
+            meeting_id=primary_meeting if len(meeting_ids) == 1 else f"Batch ({len(meeting_ids)})",
+            meeting_ids=meeting_ids,
             config=request.config,
             mode=request.mode,
             status="queued",
@@ -117,7 +121,7 @@ class PipelineRunner:
         live_runs: list[dict[str, Any]] = []
         with self._lock:
             for record in self._runs.values():
-                if record.meeting_id == meeting_id:
+                if meeting_id in record.meeting_ids:
                     live_runs.append(self._serialize_live_run(record))
         history_runs = self._historical_runs(meeting_id)
         combined = live_runs + history_runs
@@ -161,17 +165,18 @@ class PipelineRunner:
         return record
 
     def _build_command(self, request: RunCreateRequest, config_path: Path, run_label: str) -> list[str]:
+        meeting_ids = request.meeting_ids or ([request.meeting_id] if request.meeting_id else [])
         command = [
             self.settings.python_executable,
             "scripts/run_nemo_batch_sequential.py",
             "--config",
             str(config_path.relative_to(self.settings.project_root)),
-            "--meeting-id",
-            request.meeting_id,
             "--run-label",
             run_label,
             "--skip-speech-eval",
         ]
+        for meeting_id in meeting_ids:
+            command.extend(["--meeting-id", meeting_id])
         if request.mode == "validate-only":
             command.append("--validate-only")
         else:
@@ -197,6 +202,17 @@ class PipelineRunner:
         if not meeting_id or "/" in meeting_id or ".." in meeting_id:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid meeting_id")
 
+    def _resolve_requested_meetings(self, request: RunCreateRequest) -> list[str]:
+        meeting_ids = list(dict.fromkeys(request.meeting_ids or []))
+        if request.meeting_id:
+            meeting_ids.insert(0, request.meeting_id)
+            meeting_ids = list(dict.fromkeys(meeting_ids))
+        for meeting_id in meeting_ids:
+            self._validate_meeting_id(meeting_id)
+        if not meeting_ids:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one meeting_id is required")
+        return meeting_ids
+
     def _watch_process(self, record: RunRecord, run_label: str) -> None:
         assert record.process is not None
         process = record.process
@@ -207,8 +223,8 @@ class PipelineRunner:
         exit_code = process.wait()
         summary = self._read_summary(run_label)
         artifact_digest = None
-        if summary:
-            matching = next((row for row in summary.get("records", []) if row.get("meeting_id") == record.meeting_id), None)
+        if summary and len(record.meeting_ids) == 1:
+            matching = next((row for row in summary.get("records", []) if row.get("meeting_id") == record.meeting_ids[0]), None)
             artifact_digest = (matching or {}).get("artifact_digest")
         with self._lock:
             record.exit_code = exit_code
@@ -224,6 +240,8 @@ class PipelineRunner:
         self._persist_registry()
 
     def _refresh_stage_events(self, record: RunRecord) -> None:
+        if len(record.meeting_ids) != 1:
+            return
         stage_trace = self.settings.artifacts_dir / record.meeting_id / "stage_trace.jsonl"
         if not stage_trace.exists():
             return
@@ -324,11 +342,13 @@ class PipelineRunner:
                 continue
             for record in payload.get("records", []):
                 if meeting_id is not None and record.get("meeting_id") != meeting_id:
-                    continue
+                    if meeting_id not in (record.get("meeting_ids") or []):
+                        continue
                 rows.append(
                     {
                         "run_id": None,
-                        "meeting_id": record.get("meeting_id"),
+                        "meeting_id": record.get("meeting_id") or (record.get("meeting_ids") or ["Unknown"])[0],
+                        "meeting_ids": record.get("meeting_ids") or ([record.get("meeting_id")] if record.get("meeting_id") else []),
                         "config": payload.get("config_path"),
                         "mode": "validate-only" if payload.get("validate_only") else "run",
                         "status": self._normalize_history_status(record),
@@ -354,6 +374,7 @@ class PipelineRunner:
         return {
             "run_id": record.run_id,
             "meeting_id": record.meeting_id,
+            "meeting_ids": record.meeting_ids,
             "config": record.config,
             "mode": record.mode,
             "status": record.status,
@@ -383,6 +404,7 @@ class PipelineRunner:
                 run_id=row["run_id"],
                 run_label=row.get("run_label", f"ui_{row.get('mode', 'run').replace('-', '_')}_{row.get('meeting_id', 'unknown')}_{row['run_id']}"),
                 meeting_id=row["meeting_id"],
+                meeting_ids=row.get("meeting_ids", [row["meeting_id"]]),
                 config=row["config"],
                 mode=row["mode"],
                 status=row["status"],
@@ -406,8 +428,11 @@ class PipelineRunner:
     def _reconcile_loaded_record(self, record: RunRecord) -> None:
         summary = self._read_summary(record.run_label)
         if summary:
-            matching = next((row for row in summary.get("records", []) if row.get("meeting_id") == record.meeting_id), None)
             record.summary = summary
+            if len(record.meeting_ids) == 1:
+                matching = next((row for row in summary.get("records", []) if row.get("meeting_id") == record.meeting_ids[0]), None)
+            else:
+                matching = None
             if matching:
                 record.artifact_digest = matching.get("artifact_digest")
                 record.started_at = matching.get("started_at_utc", record.started_at)
@@ -424,6 +449,7 @@ class PipelineRunner:
             "run_id": record.run_id,
             "run_label": record.run_label,
             "meeting_id": record.meeting_id,
+            "meeting_ids": record.meeting_ids,
             "config": record.config,
             "mode": record.mode,
             "status": record.status,

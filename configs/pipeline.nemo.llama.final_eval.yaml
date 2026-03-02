@@ -8,7 +8,8 @@ pipeline:
     nemo:
       vad_model_path: models/nemo/vad/vad_multilingual_marblenet.nemo
       diarizer_config_path: models/nemo/diarizer/inference.yaml
-      asr_model_path: models/nemo/asr/stt_en_conformer_ctc_medium.nemo
+      # Primary evaluation profile: Parakeet improved WER/cpWER in local benchmarking.
+      asr_model_path: models/nemo/asr/parakeet-tdt-0.6b-v2.nemo
       allow_precomputed_outputs: false
       vad_command: python scripts/nemo_vad.py --audio {audio_path} --out-dir {output_dir}
         --meeting-id {meeting_id} --derive-from-diarization-rttm
@@ -21,7 +22,7 @@ pipeline:
     mode: llama_cpp
     llama_cpp:
       model_path: models/llm/gguf/qwen2.5-7b-instruct-q5_k_m-00001-of-00002.gguf
-      n_ctx: 12288
+      n_ctx: 8096
       n_gpu_layers: 24
       temperature: 0.05
       top_p: 1.0
@@ -30,7 +31,7 @@ pipeline:
     mode: llama_cpp
     llama_cpp:
       model_path: models/llm/gguf/qwen2.5-7b-instruct-q5_k_m-00001-of-00002.gguf
-      n_ctx: 12288
+      n_ctx: 8096
       n_gpu_layers: 24
       temperature: 0.0
       top_p: 1.0

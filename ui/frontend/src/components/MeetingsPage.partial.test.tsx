@@ -131,7 +131,6 @@ test("partial meetings show missing transcript guidance instead of broken previe
     "/api/eval/meeting/IS1001d": {
       meeting_id: "IS1001d",
       metrics: {},
-      confidence: {},
       quality_checks: {},
     },
   });

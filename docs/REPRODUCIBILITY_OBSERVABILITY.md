@@ -71,7 +71,7 @@ Use `scripts/repro_audit.py` to compare `artifact_digest` and `config_digest` ac
 Example (current artifacts only):
 
 ```bash
-python3 scripts/repro_audit.py --config configs/pipeline.nemo.llama.yaml --meeting-id ES2005a
+python3 scripts/repro_audit.py --config configs/pipeline.nemo.llama.final_eval.yaml --meeting-id ES2005a
 ```
 
 Example (compare current artifacts to a saved snapshot root):
@@ -127,4 +127,5 @@ Reason:
 - batch events JSONL (`*.events.jsonl`)
 - per-meeting timings CSV (`*.timings.csv`)
 - validation report (`*.validation.json`)
-- speech evaluation summaries (`WER`, `cpWER`, `DER`)
+- speech evaluation summaries from the batch/standalone speech-eval flow (`WER`, `cpWER`, `DER`)
+- pipeline evaluation artifacts (`WER`, `CER`, `cpWER`, `DER`, `ROUGE`, structural MoM checks)

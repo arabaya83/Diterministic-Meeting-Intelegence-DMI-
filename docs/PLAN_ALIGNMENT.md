@@ -36,7 +36,8 @@ Status legend:
 7. Summarization (MoM narrative): `Complete` (`llama.cpp` + local GGUF)
 8. Structured extraction: `Complete` (`llama.cpp` + Pydantic + post-validation)
 9. Evaluation and governance: `Complete (Documented Caveat)`
-   - `WER`, `cpWER`, approximate `DER`, confidence QA implemented
+   - pipeline stage computes `WER`, `CER`, `cpWER`, approximate `DER`, `ROUGE`, and structural MoM checks
+   - standalone speech-eval scripts remain available for cross-checking and richer speech-analysis reports
    - DVC/MLflow offline workflow implemented (scaffold + hooks + templates)
 10. Determinism checks/regression testing: `Partial`
    - determinism controls + reproducibility reports implemented
@@ -54,8 +55,6 @@ Status legend:
 - NeMo wrappers and artifact contracts: `Complete`
 - Offline local model paths: `Complete`
 - GTX 1080 Ti tuning (ASR batch/chunking): `Complete`
-- ASR confidence extraction: `Complete`
-
 ## 8–9. Transcript normalization, canonicalization, chunking
 
 - Canonical AMI meeting object: `Complete`
@@ -82,10 +81,12 @@ Status legend:
 - WER/CER: `Complete`
 - cpWER/DER (approximate no-overlap method): `Complete (Documented Caveat)`
   - suitable for comparative tuning
+  - now emitted by the main `evaluation` stage and by standalone speech-eval scripts
   - not a full external canonical DER implementation
-- ROUGE placeholders / structural MoM checks: `Complete (Documented Caveat)`
+- ROUGE against AMI abstractive references / structural MoM checks: `Complete (Documented Caveat)`
   - structural MoM quality checks are active
-  - ROUGE is emitted as reference-optional; fields remain empty when no AMI MoM references are supplied
+  - ROUGE now uses `data/rawa/ami/annotations/abstractive/{meeting_id}.abssumm.xml`
+  - the `abstract` section is the current reference target for the MoM `summary` field
 - DVC / MLflow offline tracking: `Complete`
   - offline local scaffold implemented
   - pipeline and batch-level MLflow local-file logging hooks implemented

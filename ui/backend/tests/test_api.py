@@ -27,8 +27,17 @@ def test_download_endpoint_returns_ok(client):
 
 
 def test_eval_and_config_endpoints_return_ok(client):
-    assert client.get("/api/eval/summary").status_code == 200
-    assert client.get("/api/eval/meeting/TEST100a").status_code == 200
+    eval_summary = client.get("/api/eval/summary")
+    assert eval_summary.status_code == 200
+    assert eval_summary.json()["rows"][0]["rouge1"] == "0.4"
+    assert eval_summary.json()["aggregate_metrics"]["mean_rouge1"] == 0.4
+    assert eval_summary.json()["aggregate_metrics"]["mean_cpwer"] == 0.12
+    assert eval_summary.json()["aggregate_metrics"]["mean_der"] == 0.2
+    eval_meeting = client.get("/api/eval/meeting/TEST100a")
+    assert eval_meeting.status_code == 200
+    assert eval_meeting.json()["metrics"]["rouge1"] == "0.4"
+    assert eval_meeting.json()["metrics"]["cpwer"] == 0.12
+    assert eval_meeting.json()["metrics"]["der"] == 0.2
     assert client.get("/api/meetings/TEST100a/repro").status_code == 200
     assert client.get("/api/meetings/TEST100a/speech").status_code == 200
     assert client.get("/api/meetings/TEST100a/transcript").status_code == 200

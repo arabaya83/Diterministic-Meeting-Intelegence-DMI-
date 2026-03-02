@@ -12,6 +12,19 @@
 
 ---
 
+## Status Update (March 2, 2026)
+
+This report predates the latest evaluation/documentation pass. The current implementation differs from some older passages below in three important ways:
+
+- the main pipeline `evaluation` stage now computes `WER`, `CER`, `ROUGE-1`, `ROUGE-2`, `ROUGE-L`, and structural MoM checks
+- `ROUGE` is computed against AMI abstractive references from `data/rawa/ami/annotations/abstractive/{meeting_id}.abssumm.xml`, using the `abstract` section
+- `cpWER` and approximate `DER` are now emitted by the main `evaluation` stage, with standalone speech-evaluation scripts retained for richer batch reports and cross-checking
+- ASR confidence is no longer surfaced as an application-level metric in the UI or evaluation CSVs
+- the release configuration used for current runs is `configs/pipeline.nemo.llama.final_eval.yaml`
+- the active `llama.cpp` context size in the release profiles is `8096`
+
+---
+
 ## Table of Contents
 
 1. [Executive Summary](#1-executive-summary)
@@ -51,7 +64,7 @@ Key achievements:
 - **End-to-end offline pipeline** running on commodity hardware (GTX 1080 Ti / 32 GB RAM)
 - **NeMo-backed speech processing** producing schema-validated artifacts at every stage
 - **llama.cpp-powered MoM generation** using the Qwen2.5-7B-Instruct Q5_K_M GGUF model
-- **Comprehensive evaluation**: WER, CER, cpWER, approximate DER, and MoM quality checks
+- **Comprehensive evaluation**: WER, CER, cpWER, approximate DER, ROUGE, and structural MoM checks
 - **Comparative baselines and ablation studies**: extractive vs. abstractive MoM, hierarchical vs. single-pass summarization, chunking parameter sensitivity
 - **Full reproducibility and traceability**: per-meeting manifests, stage traces, config/code digests, and reproducibility reports
 - **Offline governance scaffold**: DVC and MLflow local-file integration
@@ -110,7 +123,7 @@ The system is designed to run on a **NVIDIA GTX 1080 Ti** GPU (11 GB VRAM) with 
 | O2 | NeMo speech stack | VAD, diarization, ASR via NeMo wrappers producing RTTM/JSON artifacts |
 | O3 | Local LLM summarization | MoM generation via llama.cpp GGUF model, no API calls |
 | O4 | Schema-valid structured outputs | All outputs validated by Pydantic schemas |
-| O5 | Quantitative evaluation | WER, cpWER, DER reported per meeting |
+| O5 | Quantitative evaluation | WER/CER/cpWER/DER/ROUGE reported per meeting |
 | O6 | Reproducibility | Manifest digests, config hashes, reproducibility reports per run |
 | O7 | CRISP-DM alignment | All six CRISP-DM phases documented with evidence |
 | O8 | Regression testing | ≥10 passing regression tests covering core pipeline logic |
@@ -223,7 +236,7 @@ The pipeline is driven by YAML configuration files parsed into validated Pydanti
 
 | Config File | Purpose |
 |------------|---------|
-| `pipeline.nemo.llama.yaml` | Primary production profile (NeMo + llama.cpp) |
+| `pipeline.nemo.llama.final_eval.yaml` | Primary production profile (NeMo + llama.cpp) |
 | `pipeline.nemo.llama.strict_offline.yaml` | Strict offline profile with fail-fast checks |
 | `pipeline.nemo.llama.asr_conformer_large_bs32.yaml` | Large ASR model variant |
 | `pipeline.nemo.llama.asr_medium.yaml` | Medium ASR model variant |
@@ -330,7 +343,7 @@ Long transcripts are segmented into overlapping chunks for LLM processing:
 
 | Parameter | Default Value | Rationale |
 |-----------|--------------|-----------|
-| `target_words` | 220 | Fits within 4096-token context window with prompt overhead |
+| `target_words` | 220 | Fits within the current 8096-token context window with prompt overhead |
 | `overlap_words` | 40 | Preserves cross-boundary context for coherent summaries |
 
 Chunk IDs are deterministically formatted as `{meeting_id}_chunk_{####}` (zero-padded to 4 digits), ensuring stable references across runs. Speaker boundaries are preserved during chunking.
@@ -480,12 +493,10 @@ class DiarizationSegment(TimeSegment):
 - Shared CUDA context reuse
 
 **Artifacts produced**:
-- `asr_segments.json` — list of `ASRSegment` objects with confidence scores
-- `asr_confidence.json` — aggregate confidence statistics
+- `asr_segments.json` — list of `ASRSegment` objects
 - `full_transcript.txt` — human-readable `[start-end] SPEAKER: text` format
 
-**ASR Confidence Extraction**:
-Real per-segment confidence scores (non-zero, derived from log-probability outputs) are extracted and reported:
+**ASR Segment Schema**:
 ```python
 class ASRSegment(TimeSegment):
     speaker: str
@@ -644,27 +655,22 @@ Standard scoring applies a ±0.25s **collar** around speaker boundaries to toler
 
 **Documented caveat**: This is explicitly noted in `docs/NORMALIZATION_DECISION.md`, `artifacts/ami/{meeting_id}/reproducibility_report.json`, and every batch summary artifact.
 
-#### ASR Confidence QA
-Per-segment confidence statistics are reported:
-- Mean confidence, minimum confidence
-- Distribution analysis
-- Low-confidence segment flagging
-
-Implemented via `scripts/eval_asr_confidence.py`.
+#### ASR Confidence Note
+ASR confidence is retained only as internal/intermediate metadata when available. It is not part of the delivered application metrics, UI summaries, or evaluation CSV outputs.
 
 ### 10.2 Summarization Evaluation
 
 #### ROUGE Scores
-ROUGE-1, ROUGE-2, and ROUGE-L are computed when AMI reference summaries are available:
+ROUGE-1, ROUGE-2, and ROUGE-L are computed from the AMI abstractive `abstract` reference when `*.abssumm.xml` is available for a meeting:
 - Scores are written to `artifacts/eval/ami/rouge_scores.csv`
-- Fields remain empty when no AMI MoM references are supplied
-- This is explicitly documented as reference-optional behavior
+- Meetings without AMI abstractive references still produce a row, but ROUGE fields remain empty
+- This is explicitly documented as reference-optional behavior at the meeting level, not as a project-wide placeholder state
 
 #### Structural MoM Quality Checks
 Schema-level checks in `artifacts/ami/{meeting_id}/extraction_validation_report.json`:
 - `schema_valid`: boolean — all required fields present and typed correctly
 - `decision_count`, `action_item_count`: extraction volume metrics
-- `flags`: list of quality warnings (e.g., low confidence items, missing owners)
+- `flags`: list of quality warnings (e.g., low-support items, missing owners)
 
 ### 10.3 Batch Evaluation Summary
 
@@ -702,7 +708,7 @@ A core peer-review concern is the absence of comparative baselines and ablation 
 
 **Key findings**:
 - Extractive summaries are incoherent for meetings: AMI utterances are short (median 8 words), speaker-interleaved, and context-dependent. Extracted sentences read as disconnected fragments.
-- Single-pass abstractive summarization with a 4096-token context window can accommodate approximately 15–18 minutes of meeting transcript. For longer meetings (30–60 min), the final ~40% of the meeting is truncated. This causes the LLM to produce summaries that over-represent early meeting content and miss late decisions.
+- Single-pass abstractive summarization remains coverage-limited by the configured context window. The current release uses `n_ctx=8096`, which improves coverage versus earlier 4096-token runs but still under-represents late-meeting content on long AMI meetings.
 - Hierarchical summarization solves the coverage problem at the cost of one additional inference pass per chunk (approximately 2–4 seconds per chunk on GTX 1080 Ti). For a typical 6-chunk meeting, the overhead is ~15–25 seconds — a worthwhile trade-off for full-meeting coverage.
 
 **Conclusion**: Hierarchical summarization provides measurably better coverage for AMI meetings exceeding 20 minutes, which is the majority of the corpus. The evidence-grounding design (chunk IDs in every MoM point) further differentiates it from extractive methods by providing auditability that extractive methods lack without the hallucination risk of unconstrained abstractive generation.
@@ -794,7 +800,6 @@ Meeting ES2005a is a 45-minute AMI scenario meeting involving 4 speakers plannin
 **ASR quality** (Conformer CTC Large):
 - Estimated WER: ~18–22% (typical for AMI headset mix, without speaker adaptation)
 - Primary error types: proper nouns ("NXT" → "next"), technical terms, and fast speech segments
-- Mean ASR confidence: 0.73 (moderate; low-confidence segments flagged in `asr_confidence.json`)
 
 **Diarization quality**:
 - Estimated DER (approximate): ~12–16%
@@ -1049,7 +1054,7 @@ For each processed meeting, the pipeline produces 15+ artifact files:
 | **Audio** | `audio_clean/{id}.wav` |
 | **VAD** | `vad_segments.json`, `vad_segments.rttm` |
 | **Diarization** | `diarization_segments.json`, `diarization.rttm` |
-| **ASR** | `asr_segments.json`, `asr_confidence.json`, `full_transcript.txt` |
+| **ASR** | `asr_segments.json`, `full_transcript.txt` |
 | **Transcript** | `transcript_raw.json`, `transcript_normalized.json`, `transcript_chunks.jsonl` |
 | **Optional** | `retrieval_results.json`, `faiss_index/` |
 | **MoM** | `mom_summary.json`, `mom_summary.html`, `decisions_actions.json` |
@@ -1077,7 +1082,6 @@ End-to-end evaluation metrics from the 6-meeting benchmark:
 | **WER** | Per-meeting and aggregate word error rate | Computed and logged |
 | **cpWER** | Speaker-permutation-aware WER | Computed and logged |
 | **DER** | Approximate diarization error rate | Computed (documented caveat: no collar, no overlap) |
-| **ASR Confidence** | Mean/min confidence per meeting | Computed and logged |
 | **ROUGE-1/2/L** | Summarization quality vs. AMI references | Mean 0.375 / 0.137 / 0.307 |
 | **Schema Validation** | `extraction_validation_report.json` `schema_valid: true` | Met for all 6 meetings |
 
@@ -1099,11 +1103,11 @@ The project is structured around the **CRISP-DM** methodology. The following pro
 
 **Objective**: Convert AMI meeting audio into speaker-attributed transcripts and structured MoM outputs.  
 **Constraints**: Offline-first, English-only, GTX 1080 Ti hardware, reproducibility/auditability focus.  
-**Evidence**: `README.md`, `configs/pipeline.nemo.llama.yaml`, `docs/ACCEPTANCE_CHECKLIST_SECTION16.md`
+**Evidence**: `README.md`, `configs/pipeline.nemo.llama.final_eval.yaml`, `docs/ACCEPTANCE_CHECKLIST_SECTION16.md`
 
 ### 17.2 Phase 2: Data Understanding
 
-**Implementation**: AMI annotation ingestion, utterance construction, audio QC metrics, speech metrics (WER, cpWER, DER), ASR confidence QA.  
+**Implementation**: AMI annotation ingestion, utterance construction, audio QC metrics, and speech metrics (WER, cpWER, DER).  
 **Evidence**: `utils/ami_annotations.py`, `utils/audio_utils.py`, `scripts/eval_speech_metrics.py`
 
 ### 17.3 Phase 3: Data Preparation
@@ -1118,7 +1122,7 @@ The project is structured around the **CRISP-DM** methodology. The following pro
 
 ### 17.5 Phase 5: Evaluation
 
-**Implementation**: WER, CER, cpWER, approximate DER, ASR confidence QA, ROUGE (reference-optional), MoM schema validation, extraction validation reports, reproducibility audits.  
+**Implementation**: WER, CER, cpWER, approximate DER, ROUGE, MoM schema validation, extraction validation reports, reproducibility audits, and standalone speech cross-check scripts.  
 **Evidence**: `utils/speech_eval.py`, `scripts/eval_speech_metrics.py`, `scripts/repro_audit.py`
 
 ### 17.6 Phase 6: Deployment / Operations
@@ -1355,19 +1359,19 @@ This section provides prepared responses to the six questions posed in the peer 
 ```bash
 # Single meeting run (full pipeline)
 PYTHONPATH=src python3 -m ami_mom_pipeline \
-  --config configs/pipeline.nemo.llama.yaml \
+  --config configs/pipeline.nemo.llama.final_eval.yaml \
   run --meeting-id ES2005a
 
 # Batch run with 6 meetings
 python3 scripts/run_nemo_batch_sequential.py \
-  --config configs/pipeline.nemo.llama.yaml \
+  --config configs/pipeline.nemo.llama.final_eval.yaml \
   --meeting-id ES2005a --meeting-id ES2005b \
   --meeting-id ES2005c --meeting-id ES2005d \
   --meeting-id IS1000a --meeting-id IS1000b
 
 # Validate-only (audit existing artifacts)
 python3 scripts/run_nemo_batch_sequential.py \
-  --config configs/pipeline.nemo.llama.yaml \
+  --config configs/pipeline.nemo.llama.final_eval.yaml \
   --meeting-id ES2005a --validate-only
 
 # Strict offline profile run
@@ -1377,7 +1381,7 @@ python3 scripts/run_nemo_batch_sequential.py \
 
 # Reproducibility audit
 python3 scripts/repro_audit.py \
-  --config configs/pipeline.nemo.llama.yaml \
+  --config configs/pipeline.nemo.llama.final_eval.yaml \
   --meeting-id ES2005a
 
 # Generate evidence bundle
@@ -1399,7 +1403,6 @@ artifacts/
 │   │   ├── diarization_segments.json
 │   │   ├── diarization.rttm
 │   │   ├── asr_segments.json
-│   │   ├── asr_confidence.json
 │   │   ├── full_transcript.txt
 │   │   ├── transcript_raw.json
 │   │   ├── transcript_normalized.json
@@ -1419,6 +1422,7 @@ artifacts/
 ├── eval/
 │   └── ami/
 │       ├── wer_scores.csv
+│       ├── speech_metrics.csv
 │       ├── wer_breakdown.json
 │       ├── rouge_scores.csv
 │       └── mom_quality_checks.json
@@ -1444,7 +1448,7 @@ AppConfig
 │   ├── SpeechBackendConfig
 │   │   └── NemoConfig (vad/diarizer/asr paths + command templates)
 │   ├── SummarizationBackendConfig
-│   │   └── LlamaCppConfig (model_path, n_ctx=4096, n_gpu_layers=20, temperature=0.05)
+│   │   └── LlamaCppConfig (model_path, n_ctx=8096, n_gpu_layers=20, temperature=0.05)
 │   └── ExtractionBackendConfig
 │       └── LlamaCppConfig
 ├── PathsConfig (raw_audio_dir, annotations_dir, staged_dir, artifacts_dir)

@@ -10,23 +10,44 @@ export function ConfigurationPage() {
   const [configs, setConfigs] = useState<ConfigEntry[]>([]);
   const [selectedName, setSelectedName] = useState("");
   const [selectedConfig, setSelectedConfig] = useState<ConfigResponse | null>(null);
+  const [isLoadingConfigs, setIsLoadingConfigs] = useState(true);
+  const [isLoadingConfig, setIsLoadingConfig] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.getConfigs().then((items) => {
-      setConfigs(items);
-      if (items[0]) {
-        setSelectedName(items[0].name);
-      }
-    });
+    setIsLoadingConfigs(true);
+    setError(null);
+    api
+      .getConfigs()
+      .then((items) => {
+        setConfigs(items);
+        if (items[0]) {
+          setSelectedName(items[0].name);
+        }
+      })
+      .catch((reason: Error) => setError(reason.message))
+      .finally(() => setIsLoadingConfigs(false));
   }, []);
 
   useEffect(() => {
     if (!selectedName) {
       return;
     }
-    api.getConfig(selectedName).then(setSelectedConfig);
+    setIsLoadingConfig(true);
+    setError(null);
+    api
+      .getConfig(selectedName)
+      .then(setSelectedConfig)
+      .catch((reason: Error) => setError(reason.message))
+      .finally(() => setIsLoadingConfig(false));
   }, [selectedName]);
 
+  if (error) {
+    return <EmptyState message={`Configuration view unavailable: ${error}`} />;
+  }
+  if (isLoadingConfigs) {
+    return <EmptyState message="Loading configuration files..." />;
+  }
   if (!configs.length) {
     return <EmptyState message="No configuration files found." />;
   }
@@ -58,21 +79,25 @@ export function ConfigurationPage() {
       </Panel>
       <Panel title={selectedName} subtitle="Editing is disabled in V1 read-only mode">
         <div className="overflow-hidden rounded-lg border border-border">
-          <Suspense fallback={<div className="min-h-[32rem] bg-background/80 p-4 text-sm text-textSecondary">Loading editor...</div>}>
-            <MonacoEditor
-              height="32rem"
-              defaultLanguage="yaml"
-              theme="vs-dark"
-              value={selectedConfig?.content ?? ""}
-              options={{
-                readOnly: true,
-                minimap: { enabled: false },
-                lineNumbers: "on",
-                scrollBeyondLastLine: false,
-                wordWrap: "on",
-              }}
-            />
-          </Suspense>
+          {isLoadingConfig && !selectedConfig ? (
+            <div className="min-h-[32rem] bg-background/80 p-4 text-sm text-textSecondary">Loading configuration...</div>
+          ) : (
+            <Suspense fallback={<div className="min-h-[32rem] bg-background/80 p-4 text-sm text-textSecondary">Loading editor...</div>}>
+              <MonacoEditor
+                height="32rem"
+                defaultLanguage="yaml"
+                theme="vs-dark"
+                value={selectedConfig?.content ?? ""}
+                options={{
+                  readOnly: true,
+                  minimap: { enabled: false },
+                  lineNumbers: "on",
+                  scrollBeyondLastLine: false,
+                  wordWrap: "on",
+                }}
+              />
+            </Suspense>
+          )}
         </div>
       </Panel>
     </div>

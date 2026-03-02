@@ -18,7 +18,6 @@ MEETING_FILES = [
     "mom_summary.json",
     "decisions_actions.json",
     "extraction_validation_report.json",
-    "asr_confidence.json",
 ]
 
 DOC_FILES = [

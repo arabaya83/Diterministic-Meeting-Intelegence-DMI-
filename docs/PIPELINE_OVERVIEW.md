@@ -21,8 +21,9 @@ This document describes the end-to-end AMI processing flow implemented in
 7. `retrieval` (optional)
 8. `summarization`
 9. `extraction`
-10. `evaluation`
-11. finalization (`run_manifest.json`, digests)
+10. `summary_finalize`
+11. `evaluation`
+12. finalization (`run_manifest.json`, digests)
 
 Each stage emits trace events in `stage_trace.jsonl`.
 
@@ -65,7 +66,6 @@ Backend:
 Outputs:
 - `artifacts/ami/{meeting_id}/asr_segments.json`
 - `artifacts/ami/{meeting_id}/full_transcript.txt`
-- `artifacts/ami/{meeting_id}/asr_confidence.json`
 
 ### Canonicalization
 
@@ -111,6 +111,10 @@ Outputs:
 - `artifacts/ami/{meeting_id}/mom_summary.json`
 - `artifacts/ami/{meeting_id}/mom_summary.html`
 
+Notes:
+- the backend now requests internal `abstract`, `actions`, `decisions`, and `problems` buckets
+- those buckets are used to compose a more AMI-reference-aligned narrative summary
+
 ### Extraction
 
 Backend:
@@ -120,13 +124,26 @@ Outputs:
 - `artifacts/ami/{meeting_id}/decisions_actions.json`
 - `artifacts/ami/{meeting_id}/extraction_validation_report.json`
 
+### Summary finalize
+
+Responsibilities:
+- merge extracted action items back into `follow_up`
+- add deterministic narrative coverage when the initial summary omitted a top decision or follow-up
+- rewrite the persisted `mom_summary.json` and `mom_summary.html`
+
 ### Evaluation
 
 Outputs:
 - `artifacts/eval/ami/wer_scores.csv`
+- `artifacts/eval/ami/speech_metrics.csv`
 - `artifacts/eval/ami/wer_breakdown.json`
 - `artifacts/eval/ami/rouge_scores.csv`
 - `artifacts/eval/ami/mom_quality_checks.json`
+
+Notes:
+- pipeline evaluation currently computes `WER`, `CER`, `cpWER`, approximate `DER`, `ROUGE-1/2/L`, and structural MoM checks
+- ROUGE uses the AMI abstractive `abstract` reference when `*.abssumm.xml` is present
+- `speech_metrics.csv` stores the expanded speech metrics row, including DER subcomponents
 
 ## Determinism and reproducibility
 

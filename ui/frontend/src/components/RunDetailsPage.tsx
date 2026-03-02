@@ -37,20 +37,30 @@ export function RunDetailsPage() {
     return <EmptyState message="Loading run details..." />;
   }
 
+  const meetingIds = run.meeting_ids ?? [run.meeting_id];
+  const isBatchRun = meetingIds.length > 1;
+  const meetingLabel = isBatchRun ? "Meetings" : "Meeting";
+  const meetingValue = isBatchRun ? meetingIds.join(", ") : run.meeting_id;
+
   return (
     <div className="space-y-6">
       <Panel
         title={`Run ${run.run_id}`}
         subtitle="Live execution details, stage progress, and recent log output"
         actions={
-          <Link to={`/meetings/${run.meeting_id}`} className="rounded-md border border-accent/40 bg-accent/15 px-3 py-2 text-sm text-textPrimary">
-            Back to meeting
-          </Link>
+          !isBatchRun ? (
+            <Link
+              to={`/meetings/${run.meeting_id}`}
+              className="rounded-md border border-accent/40 bg-accent/15 px-3 py-2 text-sm text-textPrimary"
+            >
+              Back to meeting
+            </Link>
+          ) : undefined
         }
       >
         <KeyValueGrid
           items={[
-            { label: "Meeting", value: run.meeting_id },
+            { label: meetingLabel, value: meetingValue },
             { label: "Config", value: run.config },
             { label: "Mode", value: run.mode },
             {

@@ -36,7 +36,7 @@ pipeline:
     mode: llama_cpp
     llama_cpp:
       model_path: models/llm/gguf/qwen2.5-7b-instruct-q5_k_m-00001-of-00002.gguf
-      n_ctx: 12288
+      n_ctx: 8096
       n_gpu_layers: 24
       temperature: 0.05
       top_p: 1.0
@@ -45,7 +45,7 @@ pipeline:
     mode: llama_cpp
     llama_cpp:
       model_path: models/llm/gguf/qwen2.5-7b-instruct-q5_k_m-00001-of-00002.gguf
-      n_ctx: 12288
+      n_ctx: 8096
       n_gpu_layers: 24
       temperature: 0.0
       top_p: 1.0

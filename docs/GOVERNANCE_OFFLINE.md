@@ -5,6 +5,7 @@ This project now includes a lightweight offline governance scaffold aligned to t
 - DVC local cache/remote layout (no network)
 - MLflow local file-based tracking store
 - local scripts to bootstrap and run both tools offline
+- deploy-ready evidence generation through acceptance/evidence bundles
 
 ## Scaffold setup
 
@@ -78,13 +79,19 @@ Notes:
 
 This keeps runtime lightweight while providing an operational offline governance workflow aligned with the plan.
 
+For release preparation, pair the governance scaffold with:
+
+- `make acceptance-bundle`
+- `make ui-build`
+- `bash ui/scripts/smoke_test.sh`
+
 ## DVC template generation from the batch runner
 
 You can generate a DVC stage template for the exact selected meetings while running (or validating) a batch:
 
 ```bash
 python3 scripts/run_nemo_batch_sequential.py \
-  --config configs/pipeline.nemo.llama.yaml \
+  --config configs/pipeline.nemo.llama.final_eval.yaml \
   --meeting-id ES2005a --meeting-id ES2005d \
   --validate-only \
   --dvc-template batch

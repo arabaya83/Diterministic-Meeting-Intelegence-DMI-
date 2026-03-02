@@ -26,10 +26,15 @@ def synthetic_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     (tmp_path / "data/staged/ami/audio_clean/TEST100a.wav").write_bytes(b"RIFFclean")
     (tmp_path / "configs/pipeline.sample.yaml").write_text("pipeline:\n  retrieval:\n    enabled: false\n", encoding="utf-8")
     (tmp_path / "artifacts/eval/ami/wer_scores.csv").write_text(
-        "meeting_id,wer,cer,speech_backend\nTEST100a,0.1,0.05,nemo\n", encoding="utf-8"
+        "meeting_id,wer,cer,cpwer,der,speech_backend\nTEST100a,0.1,0.05,0.12,0.2,nemo\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "artifacts/eval/ami/rouge_scores.csv").write_text(
+        "meeting_id,rouge1,rouge2,rougeL\nTEST100a,0.4,0.2,0.35\n", encoding="utf-8"
     )
     (tmp_path / "artifacts/eval/ami/wer_breakdown.json").write_text(
-        json.dumps({"meeting_id": "TEST100a", "wer": 0.1, "cer": 0.05}), encoding="utf-8"
+        json.dumps({"meeting_id": "TEST100a", "wer": 0.1, "cer": 0.05, "cpwer": 0.12, "der": 0.2}),
+        encoding="utf-8",
     )
     (tmp_path / "artifacts/eval/ami/mom_quality_checks.json").write_text(
         json.dumps({"meeting_id": "TEST100a", "schema_valid": True}), encoding="utf-8"
@@ -42,7 +47,6 @@ def synthetic_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     meeting_dir.joinpath("diarization_segments.json").write_text(json.dumps([{"start": 0, "end": 1, "speaker": "speaker_0", "source": "test"}]), encoding="utf-8")
     meeting_dir.joinpath("diarization.rttm").write_text("SPEAKER TEST100a 1 0.0 1.0 <NA> <NA> speaker_0 <NA> <NA>\n", encoding="utf-8")
     meeting_dir.joinpath("asr_segments.json").write_text(json.dumps([{"start": 0, "end": 1, "speaker": "speaker_0", "text": "hello", "confidence": 0.8, "source": "test"}]), encoding="utf-8")
-    meeting_dir.joinpath("asr_confidence.json").write_text(json.dumps({"meeting_id": "TEST100a", "segment_count": 1, "mean_confidence": 0.8, "min_confidence": 0.8}), encoding="utf-8")
     meeting_dir.joinpath("full_transcript.txt").write_text("[0.0-1.0] SPEAKER_0: hello\n", encoding="utf-8")
     meeting_dir.joinpath("transcript_raw.json").write_text(json.dumps([{"start": 0, "end": 1, "speaker": "speaker_0", "text_raw": "hello", "text_normalized": "hello"}]), encoding="utf-8")
     meeting_dir.joinpath("transcript_normalized.json").write_text(json.dumps([{"start": 0, "end": 1, "speaker": "speaker_0", "text_raw": "hello", "text_normalized": "hello"}]), encoding="utf-8")

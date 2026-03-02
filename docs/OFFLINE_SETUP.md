@@ -12,6 +12,7 @@ Core offline rules:
 Expected local directories:
 
 - `models/nemo/` (VAD/diarization/ASR models and configs)
+- Recommended evaluation ASR checkpoint: `models/nemo/asr/parakeet-tdt-0.6b-v2.nemo`
 - `models/llm/gguf/` (quantized instruct GGUF models for llama.cpp)
 - `models/embeddings/` (optional sentence-transformer local models)
 - `wheelhouse/` (optional local wheel cache)
@@ -66,10 +67,16 @@ Expected output files produced (or precomputed) in `artifacts/ami/{meeting_id}/`
 - `vad_segments.rttm`
 - `diarization_segments.json`
 - `diarization.rttm`
+- Current tuning note: Parakeet improved ASR metrics locally; approximate `DER` is still primarily constrained by diarization quality.
 - `asr_segments.json`
-- `asr_confidence.json`
 - `full_transcript.txt`
 - `retrieval_results.json` (when retrieval is enabled)
+
+Evaluation note:
+
+- pipeline runs now also populate `artifacts/eval/ami/rouge_scores.csv` from AMI abstractive references in `data/rawa/ami/annotations/abstractive/`
+- pipeline runs also populate `wer_scores.csv` and `speech_metrics.csv` with `WER`, `CER`, `cpWER`, and approximate `DER`
+- `scripts/eval_speech_metrics.py` remains useful for batch-level cross-checks and standalone reporting
 
 Notes:
 

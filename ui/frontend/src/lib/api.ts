@@ -61,7 +61,7 @@ export const api = {
   getGovernance: () => request<GovernanceResponse>("/api/governance"),
   getEvidenceBundles: () => request<GovernanceListResponse>("/api/governance/evidence-bundles"),
   getMlflowRuns: () => request<GovernanceListResponse>("/api/governance/mlflow/runs"),
-  createRun: async (payload: { meeting_id: string; config: string; mode: RunMode }) => {
+  createRun: async (payload: { meeting_id?: string; meeting_ids?: string[]; config: string; mode: RunMode }) => {
     const response = await fetch(`${API_BASE}/api/runs`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

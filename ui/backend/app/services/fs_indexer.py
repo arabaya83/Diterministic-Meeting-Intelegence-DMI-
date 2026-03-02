@@ -1,3 +1,11 @@
+"""Filesystem-backed data access for the UI backend.
+
+The UI does not query the pipeline directly. Instead it reads persisted
+artifacts under `artifacts/` and exposes them as stable API payloads. This
+indexer therefore defines the effective contract between generated files and
+the frontend.
+"""
+
 from __future__ import annotations
 
 import csv
@@ -17,7 +25,7 @@ PIPELINE_STAGES: list[dict[str, Any]] = [
     {"key": "ingest", "name": "Ingest", "artifacts": ["staged_audio"]},
     {"key": "vad", "name": "VAD", "artifacts": ["vad_segments.json", "vad_segments.rttm"]},
     {"key": "diarization", "name": "Diarization", "artifacts": ["diarization_segments.json", "diarization.rttm"]},
-    {"key": "asr", "name": "ASR", "artifacts": ["asr_segments.json", "asr_confidence.json", "full_transcript.txt"]},
+    {"key": "asr", "name": "ASR", "artifacts": ["asr_segments.json", "full_transcript.txt"]},
     {"key": "canonicalization", "name": "Canonicalization", "artifacts": ["transcript_raw.json", "transcript_normalized.json"]},
     {"key": "chunking", "name": "Chunking", "artifacts": ["transcript_chunks.jsonl"]},
     {"key": "retrieval", "name": "Retrieval", "artifacts": ["retrieval_results.json"], "optional": True},
@@ -35,6 +43,8 @@ class ArtifactSpec:
 
 
 class FilesystemIndexer:
+    """Read pipeline artifacts and project them into UI-friendly structures."""
+
     def __init__(self, settings: Settings, security: PathSecurity) -> None:
         self.settings = settings
         self.security = security
@@ -128,7 +138,6 @@ class FilesystemIndexer:
             "diarization_segments.json",
             "diarization.rttm",
             "asr_segments.json",
-            "asr_confidence.json",
             "full_transcript.txt",
             "transcript_raw.json",
             "transcript_normalized.json",
@@ -175,10 +184,27 @@ class FilesystemIndexer:
         return meeting_dir / artifact_name
 
     def get_eval_summary(self) -> dict[str, Any]:
-        rows = read_csv(self.settings.eval_dir / "wer_scores.csv") if (self.settings.eval_dir / "wer_scores.csv").exists() else []
-        numeric_columns = ("wer", "cer", "cpwer", "der", "mean_confidence")
+        """Return aggregate evaluation rows merged from pipeline CSV outputs.
+
+        `wer_scores.csv` remains the primary row source. If `rouge_scores.csv`
+        exists, its per-meeting fields are merged into the same rows so the UI
+        can present both speech and summary metrics together.
+        """
+        wer_rows = read_csv(self.settings.eval_dir / "wer_scores.csv") if (self.settings.eval_dir / "wer_scores.csv").exists() else []
+        rouge_rows = read_csv(self.settings.eval_dir / "rouge_scores.csv") if (self.settings.eval_dir / "rouge_scores.csv").exists() else []
+        rouge_index = {row.get("meeting_id"): row for row in rouge_rows if row.get("meeting_id")}
+        rows = []
+        for row in wer_rows:
+            merged = dict(row)
+            merged.update(rouge_index.get(row.get("meeting_id"), {}))
+            rows.append(merged)
+        numeric_columns = ("wer", "cer", "cpwer", "der")
         aggregate: dict[str, Any] = {"meeting_count": len(rows)}
         for column in numeric_columns:
+            values = [float(row[column]) for row in rows if row.get(column) not in (None, "", "null")]
+            if values:
+                aggregate[f"mean_{column}"] = round(sum(values) / len(values), 6)
+        for column in ("rouge1", "rouge2", "rougeL"):
             values = [float(row[column]) for row in rows if row.get(column) not in (None, "", "null")]
             if values:
                 aggregate[f"mean_{column}"] = round(sum(values) / len(values), 6)
@@ -186,16 +212,26 @@ class FilesystemIndexer:
         return {"aggregate_metrics": aggregate, "rows": rows, "latest_meeting": latest_meeting}
 
     def get_meeting_eval(self, meeting_id: str) -> dict[str, Any]:
+        """Return meeting-level evaluation details for the detail page.
+
+        This merges:
+        - `wer_breakdown.json` or the matching `wer_scores.csv` row
+        - `rouge_scores.csv` when available
+        - `mom_quality_checks.json`
+        """
         metrics = self._read_json_if_exists(self.settings.eval_dir / "wer_breakdown.json")
         quality = self._read_json_if_exists(self.settings.eval_dir / "mom_quality_checks.json")
-        confidence = self._read_json_if_exists(self.settings.artifacts_dir / meeting_id / "asr_confidence.json")
+        rouge_scores = read_csv(self.settings.eval_dir / "rouge_scores.csv") if (self.settings.eval_dir / "rouge_scores.csv").exists() else []
+        rouge_matching = next((row for row in rouge_scores if row.get("meeting_id") == meeting_id), {})
         if metrics and metrics.get("meeting_id") != meeting_id:
             scores = read_csv(self.settings.eval_dir / "wer_scores.csv") if (self.settings.eval_dir / "wer_scores.csv").exists() else []
             matching = next((row for row in scores if row.get("meeting_id") == meeting_id), {})
             metrics = {**matching, **({"meeting_id": meeting_id} if matching else {})}
+        if rouge_matching:
+            metrics = {**(metrics or {}), **rouge_matching}
         if quality and quality.get("meeting_id") != meeting_id:
             quality = None
-        return {"metrics": metrics or {}, "confidence": confidence, "quality_checks": quality}
+        return {"metrics": metrics or {}, "quality_checks": quality}
 
     def get_meeting_speech(self, meeting_id: str) -> dict[str, Any]:
         audio_artifact = self.describe_artifact(

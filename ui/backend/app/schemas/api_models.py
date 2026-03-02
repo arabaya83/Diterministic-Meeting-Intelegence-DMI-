@@ -74,7 +74,6 @@ class EvalSummaryResponse(BaseModel):
 class MeetingEvalResponse(BaseModel):
     meeting_id: str
     metrics: dict[str, Any]
-    confidence: dict[str, Any] | None = None
     quality_checks: dict[str, Any] | None = None
 
 
@@ -122,7 +121,8 @@ RunState = Literal["queued", "running", "completed", "failed", "cancelled"]
 
 
 class RunCreateRequest(BaseModel):
-    meeting_id: str
+    meeting_id: str | None = None
+    meeting_ids: list[str] = Field(default_factory=list)
     config: str
     mode: RunMode = "run"
 
@@ -147,6 +147,7 @@ class RunProgressSummary(BaseModel):
 class RunStatusResponse(BaseModel):
     run_id: str
     meeting_id: str
+    meeting_ids: list[str] = Field(default_factory=list)
     config: str
     mode: RunMode
     status: RunState
@@ -169,6 +170,7 @@ class RunCancelResponse(BaseModel):
 class MeetingRunEntry(BaseModel):
     run_id: str | None = None
     meeting_id: str
+    meeting_ids: list[str] = Field(default_factory=list)
     config: str | None = None
     mode: RunMode | None = None
     status: str

@@ -3,11 +3,14 @@
 This repository contains a stage-based AMI meeting understanding pipeline aligned to the provided NeMo-centric architecture:
 
 - NeMo for speech stages (VAD, diarization, ASR)
+- Primary evaluation ASR profile uses Parakeet for improved speech recognition quality
 - `llama.cpp` for local/offline summarization and structured extraction
 - persisted artifacts per stage for reproducibility and auditability
 - optional retrieval layer artifacts (`retrieval_results.json`, optional `faiss_index/`)
-- evaluation artifacts (`WER`, `cpWER`, approximate `DER`)
+- evaluation artifacts (`WER`, `CER`, `cpWER`, approximate `DER`, `ROUGE`)
+- current speech tuning direction: Parakeet improves ASR, while diarization remains the main `DER` limitation
 - batch execution with resume + validation
+- UI run controls support both single-meeting and batch execution
 
 ## Current status (implemented)
 
@@ -22,7 +25,7 @@ This repository contains a stage-based AMI meeting understanding pipeline aligne
 
 ```bash
 PYTHONPATH=src python3 -m ami_mom_pipeline list-meetings --limit 5
-PYTHONPATH=src python3 -m ami_mom_pipeline --config configs/pipeline.nemo.llama.yaml run --meeting-id ES2005a
+PYTHONPATH=src python3 -m ami_mom_pipeline --config configs/pipeline.nemo.llama.final_eval.yaml run --meeting-id ES2005a
 ```
 
 Or install editable:
@@ -35,13 +38,13 @@ ami-mom run --meeting-id ES2005a
 Validate existing artifacts without rerunning meetings:
 
 ```bash
-python3 scripts/run_nemo_batch_sequential.py --config configs/pipeline.nemo.llama.yaml --meeting-id ES2005a --validate-only
+python3 scripts/run_nemo_batch_sequential.py --config configs/pipeline.nemo.llama.final_eval.yaml --meeting-id ES2005a --validate-only
 ```
 
 Generate a matching DVC template while running/validating a selected set:
 
 ```bash
-python3 scripts/run_nemo_batch_sequential.py --config configs/pipeline.nemo.llama.yaml --meeting-id ES2005a --validate-only --dvc-template single
+python3 scripts/run_nemo_batch_sequential.py --config configs/pipeline.nemo.llama.final_eval.yaml --meeting-id ES2005a --validate-only --dvc-template single
 ```
 
 Strict offline profile (local-only MLflow enabled, offline checks enforced):
@@ -49,6 +52,17 @@ Strict offline profile (local-only MLflow enabled, offline checks enforced):
 ```bash
 python3 scripts/run_nemo_batch_sequential.py --config configs/pipeline.nemo.llama.strict_offline.yaml --meeting-id ES2005a --validate-only
 ```
+
+Run the UI with execution enabled:
+
+```bash
+AMI_UI_ENABLE_RUN_CONTROLS=1 make ui-dev
+```
+
+The UI Run Controls screen supports:
+- single-meeting runs
+- batch runs with multiple selected meetings
+- `run` and `validate-only` modes
 
 Convenience local regression targets:
 

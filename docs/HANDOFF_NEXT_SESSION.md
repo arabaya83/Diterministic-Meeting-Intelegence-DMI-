@@ -15,7 +15,6 @@ This handoff captures the current implementation state of the AMI-only, NeMo-cen
 - Speech pipeline:
   - NeMo VAD / diarization / ASR via wrappers and `NemoSpeechBackend`
   - Sequential batch execution is the stable path
-  - ASR confidence extraction implemented (real non-zero confidences)
 - NLP pipeline:
   - `llama.cpp` summarization backend (local GGUF, Qwen2.5-7B-Instruct Q5_K_M validated)
   - `llama.cpp` extraction backend (decisions/actions) with:
@@ -32,10 +31,8 @@ This handoff captures the current implementation state of the AMI-only, NeMo-cen
     - lexical offline retrieval always available
     - optional FAISS + sentence-transformers path when local dependencies are present
 - Evaluation:
-  - `WER`, `CER`
-  - `cpWER`
-  - approximate `DER` (documented method)
-  - ASR confidence QA reports
+  - main pipeline stage: `WER`, `CER`, `cpWER`, approximate `DER`, `ROUGE-1/2/L`, structural MoM checks
+  - standalone eval scripts: batch cross-checks for speech metrics
 - Batch operations:
   - sequential runner with resume
   - `--validate-only`
@@ -86,6 +83,8 @@ Added/updated docs:
 - `docs/GOVERNANCE_OFFLINE.md`
 - `docs/PLAN_ALIGNMENT.md`
 - `docs/ACCEPTANCE_CHECKLIST_SECTION16.md`
+- `docs/PIPELINE_OVERVIEW.md`
+- `docs/ARTIFACT_CONTRACT.md`
 
 `docs/PLAN_ALIGNMENT.md` now explicitly marks complete/partial/pending areas.
 
@@ -111,6 +110,7 @@ Recent test status:
 
 - Strict byte-for-byte determinism is not guaranteed on GPU; risks are tracked and can be gated.
 - `DER` implementation is approximate (documented no-overlap interval method) and suitable for comparative tuning, not canonical external scoring.
+- the main pipeline `evaluation` stage now emits headline `DER` and `cpWER`, while `scripts/eval_speech_metrics.py` still provides richer standalone reporting
 - DVC/MLflow integration is implemented as scaffold + hooks; full experiment protocol/automation is still partial.
 - Retrieval defaults to lexical mode; FAISS mode is optional and dependency-gated.
 - MLflow file store emits a future deprecation warning in current installed version (test warning only; still works now).
@@ -120,30 +120,26 @@ Recent test status:
 NeMo + llama full run:
 
 ```bash
-python3 scripts/run_nemo_batch_sequential.py --config configs/pipeline.nemo.llama.yaml --meeting-id ES2005a --no-resume
+python3 scripts/run_nemo_batch_sequential.py --config configs/pipeline.nemo.llama.final_eval.yaml --meeting-id ES2005a --no-resume
 ```
 
 Validate-only + DVC template:
 
 ```bash
-python3 scripts/run_nemo_batch_sequential.py --config configs/pipeline.nemo.llama.yaml --meeting-id ES2005a --validate-only --dvc-template single
+python3 scripts/run_nemo_batch_sequential.py --config configs/pipeline.nemo.llama.final_eval.yaml --meeting-id ES2005a --validate-only --dvc-template single
 ```
 
 Repro audit:
 
 ```bash
-python3 scripts/repro_audit.py --config configs/pipeline.nemo.llama.yaml --meeting-id ES2005a
+python3 scripts/repro_audit.py --config configs/pipeline.nemo.llama.final_eval.yaml --meeting-id ES2005a
 ```
 
 ## Immediate next tasks (requested now)
 
-1. Add an acceptance evidence bundle generator script
-   - collect key outputs (manifests, traces, audits, summaries, eval JSON/CSV, docs references) into `artifacts/governance/evidence_bundle/<timestamp>/`
-2. Add local test command targets (`Makefile`)
-   - quick subsets for reproducibility/traceability/governance regression tests
-3. Add strict offline profile config preset
-   - e.g. `configs/pipeline.nemo.llama.strict_offline.yaml`
-   - explicitly enable offline checks + MLflow local file store + documented deterministic-risk behavior
+1. Re-run the benchmark meetings after the current ROUGE/MoM-quality prompt changes
+2. Run `scripts/eval_speech_metrics.py` if you want batch-level cross-checks or richer DER breakdown reporting in the final evidence bundle
+3. Finish release packaging: acceptance bundle, UI build, smoke test, and final docs review
 
 ## Suggested first commands for next session
 

@@ -13,13 +13,14 @@ const links = [
 export function AppLayout({ children }: PropsWithChildren) {
   return (
     <div className="min-h-screen bg-transparent text-textPrimary">
-      <header className="border-b border-border/80 bg-surface/90 backdrop-blur">
+      <header className="border-b border-accent/20 bg-accent text-white shadow-panel">
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-6 lg:px-8">
           <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
             <div>
-              <h1 className="text-3xl font-semibold tracking-tight">Deterministic Meeting Intelligence (DMI)</h1>
+              <p className="text-xs uppercase tracking-[0.28em] text-white/70">Northwestern-Style Research Console</p>
+              <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">Deterministic Meeting Intelligence</h1>
             </div>
-            <div className="rounded-full border border-success/50 bg-success/10 px-4 py-2 text-sm text-success">
+            <div className="rounded-full border border-white/25 bg-white/10 px-4 py-2 text-sm text-white/90">
               Offline Mode ON
             </div>
           </div>
@@ -33,8 +34,8 @@ export function AppLayout({ children }: PropsWithChildren) {
                   [
                     "rounded-md border px-4 py-2 text-sm transition-colors",
                     isActive
-                      ? "border-accent bg-accent/20 text-textPrimary"
-                      : "border-border bg-card/70 text-textSecondary hover:bg-card hover:text-textPrimary",
+                      ? "border-white/40 bg-white text-accent"
+                      : "border-white/15 bg-white/10 text-white/80 hover:bg-white/18 hover:text-white",
                   ].join(" ")
                 }
               >

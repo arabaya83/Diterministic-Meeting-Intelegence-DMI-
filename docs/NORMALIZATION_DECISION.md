@@ -27,7 +27,7 @@ Status relative to plan:
 - Keeps preprocessing lightweight relative to NeMo and `llama.cpp` stages
 
 4. Good enough for current pipeline focus
-- Current quality bottleneck remains primarily speech hypothesis quality (`WER/cpWER/DER`)
+- Current quality bottleneck remains primarily speech and attribution quality (`WER`, `cpWER`, approximate `DER`) plus downstream MoM selection/filtering
 
 ## What Is Implemented
 

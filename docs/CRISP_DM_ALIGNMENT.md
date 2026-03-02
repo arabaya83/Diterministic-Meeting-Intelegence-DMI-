@@ -23,7 +23,7 @@ Evidence:
 - `README.md`
 - `docs/PLAN_ALIGNMENT.md`
 - `docs/ACCEPTANCE_CHECKLIST_SECTION16.md`
-- `configs/pipeline.nemo.llama.yaml`
+- `configs/pipeline.nemo.llama.final_eval.yaml`
 - `configs/pipeline.nemo.llama.strict_offline.yaml`
 
 ## 2. Data Understanding
@@ -33,15 +33,14 @@ Implemented data understanding / profiling:
 - AMI annotation ingestion
 - utterance/token construction for references
 - audio QC metrics and provenance logging
-- speech metrics (`WER`, `cpWER`, approximate `DER`)
-- ASR confidence QA reporting
+- speech metrics (`WER`, `CER`, `cpWER`, approximate `DER`) in the main pipeline
+- AMI abstractive reference loading for ROUGE evaluation
 
 Evidence:
 
 - `src/ami_mom_pipeline/utils/ami_annotations.py`
 - `src/ami_mom_pipeline/utils/audio_utils.py`
 - `scripts/eval_speech_metrics.py`
-- `scripts/eval_asr_confidence.py`
 - `scripts/eval_diarization_speaker_count.py`
 - `data/staged/ami/audio_qc_metrics.csv` (generated)
 - `artifacts/eval/ami/*.csv` (generated)
@@ -97,9 +96,9 @@ Evidence:
 
 Implemented evaluation and validation:
 
-- `WER`, `CER` (where available), `cpWER`, approximate `DER`
+- `WER`, `CER`, `cpWER`, approximate `DER`, ROUGE, and structural MoM checks in the main pipeline evaluation stage
+- standalone evaluation scripts for batch-level speech cross-checking
 - diarization speaker-count analysis
-- ASR confidence QA
 - MoM schema validation and extraction validation reports
 - reproducibility audits and deterministic regression tests
 
@@ -107,7 +106,6 @@ Evidence:
 
 - `scripts/eval_speech_metrics.py`
 - `scripts/eval_diarization_speaker_count.py`
-- `scripts/eval_asr_confidence.py`
 - `scripts/repro_audit.py`
 - `tests/test_deterministic_artifact_digest.py`
 - `tests/test_llama_summary_parser.py`

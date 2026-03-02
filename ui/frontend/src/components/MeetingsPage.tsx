@@ -37,6 +37,7 @@ export function MeetingsPage() {
   const [repro, setRepro] = useState<MeetingReproResponse | null>(null);
   const [evalData, setEvalData] = useState<MeetingEvalResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [tabError, setTabError] = useState<string | null>(null);
 
   function refreshMeeting(meetingIdToLoad: string) {
     setError(null);
@@ -58,6 +59,7 @@ export function MeetingsPage() {
         setRepro(reproResponse);
         setEvalData(evalResponse);
         setMeetings(meetingsResponse);
+        setTabError(null);
       })
       .catch((reason: Error) => setError(reason.message));
   }
@@ -85,17 +87,36 @@ export function MeetingsPage() {
     if (!meetingId) {
       return;
     }
+    setTabError(null);
     if (selectedTab === "Speech" && !speechData) {
       api.getMeetingSpeech(meetingId).then(setSpeechData).catch(() => undefined);
     }
     if (selectedTab === "Transcript" && !transcriptData) {
-      api.getMeetingTranscript(meetingId).then(setTranscriptData).catch(() => undefined);
+      api
+        .getMeetingTranscript(meetingId)
+        .then((response) => {
+          setTranscriptData(response);
+          setTabError(null);
+        })
+        .catch((reason: Error) => setTabError(`Transcript tab unavailable: ${reason.message}`));
     }
     if (selectedTab === "Summary" && !summaryData) {
-      api.getMeetingSummaryTab(meetingId).then(setSummaryData).catch(() => undefined);
+      api
+        .getMeetingSummaryTab(meetingId)
+        .then((response) => {
+          setSummaryData(response);
+          setTabError(null);
+        })
+        .catch((reason: Error) => setTabError(`Summary tab unavailable: ${reason.message}`));
     }
     if (selectedTab === "Extraction" && !extractionData) {
-      api.getMeetingExtraction(meetingId).then(setExtractionData).catch(() => undefined);
+      api
+        .getMeetingExtraction(meetingId)
+        .then((response) => {
+          setExtractionData(response);
+          setTabError(null);
+        })
+        .catch((reason: Error) => setTabError(`Extraction tab unavailable: ${reason.message}`));
     }
   }, [extractionData, meetingId, selectedTab, speechData, summaryData, transcriptData]);
 
@@ -217,6 +238,7 @@ export function MeetingsPage() {
               <ArtifactTabContent
                 tab={selectedTab}
                 meetingId={status.meeting_id}
+                tabError={tabError}
                 artifacts={artifacts}
                 speechData={speechData}
                 transcriptData={transcriptData}
@@ -247,8 +269,19 @@ function StageCard({ stage }: { stage: StageStatus }) {
         {stage.artifacts.map((artifact) => (
           <a
             key={artifact.name}
-            href={artifact.download_url}
-            className={`rounded border px-2 py-1 text-xs ${artifact.exists ? "border-border text-textPrimary" : "border-border/50 text-textSecondary"}`}
+            href={artifact.exists ? `${api.baseUrl}${artifact.artifact_url}` : undefined}
+            target={artifact.exists ? "_blank" : undefined}
+            rel={artifact.exists ? "noreferrer" : undefined}
+            className={`rounded border px-2 py-1 text-xs ${
+              artifact.exists
+                ? "border-border text-textPrimary hover:border-accent hover:text-accent"
+                : "border-border/50 text-textSecondary"
+            }`}
+            onClick={(event) => {
+              if (!artifact.exists) {
+                event.preventDefault();
+              }
+            }}
           >
             {artifact.name}
           </a>
@@ -261,6 +294,7 @@ function StageCard({ stage }: { stage: StageStatus }) {
 function ArtifactTabContent({
   tab,
   meetingId,
+  tabError,
   artifacts,
   speechData,
   transcriptData,
@@ -271,6 +305,7 @@ function ArtifactTabContent({
 }: {
   tab: MeetingTab;
   meetingId: string;
+  tabError: string | null;
   artifacts: ArtifactEntry[];
   speechData: MeetingSpeechResponse | null;
   transcriptData: MeetingTranscriptResponse | null;
@@ -291,12 +326,15 @@ function ArtifactTabContent({
   const vad = speechData?.vad_segments;
   const diarization = speechData?.diarization_segments;
   const asr = speechData?.asr_segments;
-  const asrConfidence = evalData?.confidence ?? {};
   const audioArtifactName = hasArtifact("staged_audio")
     ? "staged_audio"
     : hasArtifact("raw_audio")
       ? "raw_audio"
       : null;
+
+  if (tabError && tab !== "Speech" && tab !== "Evaluation" && tab !== "Reproducibility") {
+    return <EmptyState message={tabError} />;
+  }
 
   if (tab === "Speech") {
     return (
@@ -395,18 +433,14 @@ function ArtifactTabContent({
 
   if (tab === "Evaluation") {
     const metricEntries = Object.entries(evalData?.metrics ?? {});
-    const confidenceEntries = Object.entries(asrConfidence ?? evalData?.confidence ?? {});
-    if (metricEntries.length === 0 && confidenceEntries.length === 0) {
+    if (metricEntries.length === 0) {
       return (
         <EmptyState message="Evaluation outputs are not available for this meeting. The evaluation stage may not have completed." />
       );
     }
     return (
       <div className="space-y-4">
-        <div className="grid gap-4 lg:grid-cols-2">
-          <MetricBars title="Evaluation Metrics" metrics={metricEntries} />
-          <MetricBars title="Confidence Distribution" metrics={confidenceEntries} />
-        </div>
+        <MetricBars title="Evaluation Metrics" metrics={metricEntries} />
         <KeyValueGrid
           items={[
             { label: "Quality Checks", value: JSON.stringify(evalData?.quality_checks ?? {}, null, 2) },
@@ -500,7 +534,9 @@ function PreviewTable({ rows }: { rows: Array<Record<string, unknown>> }) {
   if (rows.length === 0) {
     return <EmptyState message="No rows available." />;
   }
-  const columns = Array.from(new Set(rows.flatMap((row) => Object.keys(row))));
+  const columns = Array.from(
+    new Set(rows.flatMap((row) => Object.keys(row)).filter((key) => !key.toLowerCase().includes("confidence"))),
+  );
   return (
     <div className="overflow-x-auto rounded-lg border border-border">
       <table className="min-w-full text-left text-sm">
@@ -682,7 +718,7 @@ function metricTone(label: string, value: number): "good" | "medium" | "bad" {
   if (normalized.includes("der") || normalized.includes("cpwer")) {
     return value <= 0.2 ? "good" : value <= 0.35 ? "medium" : "bad";
   }
-  if (normalized.includes("confidence") || normalized.includes("reference available")) {
+  if (normalized.includes("reference available")) {
     return value >= 0.75 ? "good" : value >= 0.4 ? "medium" : "bad";
   }
   if (normalized.includes("count")) {

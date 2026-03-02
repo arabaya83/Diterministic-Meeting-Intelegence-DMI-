@@ -38,7 +38,6 @@ REQUIRED_MEETING_FILES = [
     "diarization_segments.json",
     "asr_segments.json",
     "full_transcript.txt",
-    "asr_confidence.json",
     "transcript_raw.json",
     "transcript_normalized.json",
     "transcript_chunks.jsonl",

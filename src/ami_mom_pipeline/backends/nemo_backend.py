@@ -41,7 +41,6 @@ class NemoOutputs:
     diarization_json: Path
     diarization_rttm: Path
     asr_json: Path
-    asr_conf_json: Path
     full_transcript_txt: Path
 
 
@@ -121,7 +120,7 @@ class NemoSpeechBackend:
             raise NemoBackendError(
                 "NeMo ASR requested but no reusable outputs found and no 'asr_command' configured. "
                 "Provide pipeline.speech_backend.nemo.asr_command or precompute "
-                f"'{outputs.asr_json.name}', '{outputs.full_transcript_txt.name}', and '{outputs.asr_conf_json.name}' in {output_dir}."
+                f"'{outputs.asr_json.name}' and '{outputs.full_transcript_txt.name}' in {output_dir}."
             )
 
         diar_path = outputs.diarization_json if outputs.diarization_json.exists() else None
@@ -142,7 +141,6 @@ class NemoSpeechBackend:
             diarization_json=output_dir / "diarization_segments.json",
             diarization_rttm=output_dir / "diarization.rttm",
             asr_json=output_dir / "asr_segments.json",
-            asr_conf_json=output_dir / "asr_confidence.json",
             full_transcript_txt=output_dir / "full_transcript.txt",
         )
 
@@ -206,7 +204,7 @@ class NemoSpeechBackend:
 
     def _can_reuse_asr(self, outputs: NemoOutputs) -> bool:
         """Check whether existing ASR artifacts are reusable and NeMo-sourced."""
-        if not self._can_reuse(outputs.asr_json, outputs.full_transcript_txt, outputs.asr_conf_json):
+        if not self._can_reuse(outputs.asr_json, outputs.full_transcript_txt):
             return False
         try:
             segs = self._read_json(outputs.asr_json)
@@ -267,8 +265,7 @@ class NemoSpeechBackend:
         """Read and validate ASR artifact payloads."""
         segments = self._read_json(outputs.asr_json)
         TypeAdapter(list[ASRSegment]).validate_python(segments)
-        conf = self._read_json(outputs.asr_conf_json)
-        return {"segments": segments, "confidence": conf}
+        return {"segments": segments}
 
     @staticmethod
     def _read_json(path: Path) -> Any:

@@ -22,16 +22,14 @@ Base directory:
   - RTTM view of diarization segments
 - `asr_segments.json`
   - list of `ASRSegment`
-  - required fields: `start`, `end`, `speaker`, `text`, `confidence`, `source`
-- `asr_confidence.json`
-  - required fields: `meeting_id`, `segment_count`, `mean_confidence`, `min_confidence`
+  - required fields: `start`, `end`, `speaker`, `text`, `source`
 - `full_transcript.txt`
   - line-oriented `[start-end] SPEAKER_X: text`
 
 ### Transcript + canonical artifacts
 
 - `transcript_raw.json`
-  - segment-level rows with raw text and confidence
+  - segment-level rows with raw ASR text
 - `transcript_normalized.json`
   - list of `TranscriptTurn` rows
 - `transcript_chunks.jsonl`
@@ -47,6 +45,7 @@ Base directory:
 
 - `mom_summary.json`
   - `MinutesSummary` schema
+  - persisted after `summary_finalize`, so `follow_up` may include extraction-grounded action items
 - `mom_summary.html`
   - human-readable rendering of summary sections
 - `decisions_actions.json`
@@ -70,9 +69,15 @@ Base directory:
 
 - `artifacts/ami/meetings_canonical.jsonl`
 - `artifacts/eval/ami/wer_scores.csv`
+- `artifacts/eval/ami/speech_metrics.csv`
 - `artifacts/eval/ami/wer_breakdown.json`
 - `artifacts/eval/ami/rouge_scores.csv`
 - `artifacts/eval/ami/mom_quality_checks.json`
+
+Evaluation notes:
+- `rouge_scores.csv` is populated from AMI abstractive references under `data/rawa/ami/annotations/abstractive/`
+- `wer_scores.csv` now includes the headline per-meeting speech metrics used by the UI: `wer`, `cer`, `cpwer`, `der`
+- `speech_metrics.csv` stores the expanded speech-evaluation row, including DER subcomponents and evaluation-method metadata
 
 ## Staged data artifacts
 

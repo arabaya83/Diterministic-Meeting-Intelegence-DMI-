@@ -68,7 +68,6 @@ test("meetings list renders mocked api data", async () => {
     "/api/eval/meeting/ES2005a": {
       meeting_id: "ES2005a",
       metrics: {},
-      confidence: {},
       quality_checks: {},
     },
   });
@@ -88,7 +87,14 @@ test("meeting detail renders stage timeline from mocked status response", async 
           key: "asr",
           status: "success",
           runtime_sec: 1.23,
-          artifacts: [],
+          artifacts: [
+            {
+              name: "asr_segments.json",
+              exists: true,
+              artifact_url: "/api/meetings/ES2005a/artifact/asr_segments.json",
+              download_url: "/api/meetings/ES2005a/artifact/asr_segments.json/download",
+            },
+          ],
           notes: [],
         },
       ],
@@ -112,7 +118,6 @@ test("meeting detail renders stage timeline from mocked status response", async 
     "/api/eval/meeting/ES2005a": {
       meeting_id: "ES2005a",
       metrics: {},
-      confidence: {},
       quality_checks: {},
     },
     "/api/meetings/ES2005a/artifact/vad_segments.json": {
@@ -134,6 +139,10 @@ test("meeting detail renders stage timeline from mocked status response", async 
   renderApp("/meetings/ES2005a");
   await waitFor(() => expect(screen.getByText("Stage Timeline")).toBeInTheDocument());
   expect(screen.getByText("ASR")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "asr_segments.json" })).toHaveAttribute(
+    "href",
+    "http://localhost:8000/api/meetings/ES2005a/artifact/asr_segments.json",
+  );
 });
 
 test("artifact tab renders json preview correctly", async () => {
@@ -206,7 +215,6 @@ test("artifact tab renders json preview correctly", async () => {
     "/api/eval/meeting/ES2005a": {
       meeting_id: "ES2005a",
       metrics: {},
-      confidence: {},
       quality_checks: {},
     },
   });
@@ -242,7 +250,6 @@ test("meeting run controls render when run controls are enabled", async () => {
     "/api/eval/meeting/ES2005a": {
       meeting_id: "ES2005a",
       metrics: {},
-      confidence: {},
       quality_checks: {},
     },
     "/api/configs": [{ name: "pipeline.nemo.llama.final_eval.yaml", path: "/tmp/pipeline.nemo.llama.final_eval.yaml", size_bytes: 100 }],

@@ -24,7 +24,7 @@ Validation commands:
 
 ```bash
 source scripts/env_offline.sh
-python3 scripts/run_nemo_batch_sequential.py --config configs/pipeline.nemo.llama.yaml --meeting-id ES2005a --validate-only
+python3 scripts/run_nemo_batch_sequential.py --config configs/pipeline.nemo.llama.final_eval.yaml --meeting-id ES2005a --validate-only
 ```
 
 Check:
@@ -42,18 +42,18 @@ Evidence paths:
 - `scripts/nemo_diarize.py`
 - `scripts/nemo_asr.py`
 - `configs/pipeline.nemo.yaml`
-- `configs/pipeline.nemo.llama.yaml`
+- `configs/pipeline.nemo.llama.final_eval.yaml`
 
 Produced artifacts (per meeting):
 
 - `vad_segments.json`, `vad_segments.rttm`
 - `diarization_segments.json`, `diarization.rttm`
-- `asr_segments.json`, `asr_confidence.json`, `full_transcript.txt`
+- `asr_segments.json`, `full_transcript.txt`
 
 Validation command:
 
 ```bash
-python3 scripts/run_nemo_batch_sequential.py --config configs/pipeline.nemo.llama.yaml --meeting-id ES2005a
+python3 scripts/run_nemo_batch_sequential.py --config configs/pipeline.nemo.llama.final_eval.yaml --meeting-id ES2005a
 ```
 
 ## 3. Canonical artifacts are deterministic
@@ -72,7 +72,7 @@ Validation commands:
 
 ```bash
 PYTHONPATH=src pytest -q tests/test_deterministic_artifact_digest.py
-python3 scripts/repro_audit.py --config configs/pipeline.nemo.llama.yaml --meeting-id ES2005a
+python3 scripts/repro_audit.py --config configs/pipeline.nemo.llama.final_eval.yaml --meeting-id ES2005a
 ```
 
 Notes:
@@ -95,7 +95,7 @@ Evidence paths:
 Validation commands:
 
 ```bash
-python3 scripts/run_nemo_batch_sequential.py --config configs/pipeline.nemo.llama.yaml --meeting-id ES2005a --no-resume
+python3 scripts/run_nemo_batch_sequential.py --config configs/pipeline.nemo.llama.final_eval.yaml --meeting-id ES2005a --no-resume
 ```
 
 Check:
@@ -118,13 +118,14 @@ Evidence paths:
 Validation commands:
 
 ```bash
-python3 scripts/run_nemo_batch_sequential.py --config configs/pipeline.nemo.llama.yaml --meeting-id ES2005a
-python3 scripts/run_nemo_batch_sequential.py --config configs/pipeline.nemo.llama.yaml --meeting-id ES2005a --validate-only
+python3 scripts/run_nemo_batch_sequential.py --config configs/pipeline.nemo.llama.final_eval.yaml --meeting-id ES2005a
+python3 scripts/run_nemo_batch_sequential.py --config configs/pipeline.nemo.llama.final_eval.yaml --meeting-id ES2005a --validate-only
 ```
 
 Check:
 
-- `WER`, `cpWER`, `DER` generated in batch summary and speech eval JSON
+- pipeline evaluation artifacts include `WER`, `CER`, `cpWER`, approximate `DER`, `ROUGE`, and `mom_quality_checks`
+- standalone speech-eval outputs still provide cross-check and batch summary reports for `cpWER` and `DER`
 - `--validate-only` reproduces evaluation over existing artifacts
 
 ## 6. Alignment with CRISP-DM and academic standards is demonstrated
@@ -169,9 +170,9 @@ Run these to produce a strong evidence package for one meeting:
 
 ```bash
 source scripts/env_offline.sh
-python3 scripts/run_nemo_batch_sequential.py --config configs/pipeline.nemo.llama.yaml --meeting-id ES2005a
-python3 scripts/run_nemo_batch_sequential.py --config configs/pipeline.nemo.llama.yaml --meeting-id ES2005a --validate-only --dvc-template single
-python3 scripts/repro_audit.py --config configs/pipeline.nemo.llama.yaml --meeting-id ES2005a
+python3 scripts/run_nemo_batch_sequential.py --config configs/pipeline.nemo.llama.final_eval.yaml --meeting-id ES2005a
+python3 scripts/run_nemo_batch_sequential.py --config configs/pipeline.nemo.llama.final_eval.yaml --meeting-id ES2005a --validate-only --dvc-template single
+python3 scripts/repro_audit.py --config configs/pipeline.nemo.llama.final_eval.yaml --meeting-id ES2005a
 PYTHONPATH=src pytest -q tests/test_deterministic_artifact_digest.py tests/test_llama_summary_parser.py
 ```
 

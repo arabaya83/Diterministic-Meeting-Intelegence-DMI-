@@ -1,8 +1,13 @@
 """AMI annotation parsing utilities.
 
-This module loads AMI XML word-level annotations and converts them into
-deterministic token/utterance structures consumed by VAD/diarization mock
-fallbacks and evaluation helpers.
+This module is the bridge between the frozen AMI annotation tree in
+`data/rawa/ami/annotations/` and the rest of the pipeline. It provides:
+
+- deterministic loading of word-level reference tokens used for transcript
+  reconstruction and ASR evaluation
+- utterance grouping helpers used by mock/fallback speech stages
+- access to AMI abstractive summary references (`*.abssumm.xml`) used for
+  ROUGE evaluation
 """
 
 from __future__ import annotations
@@ -143,3 +148,49 @@ def reference_plain_text(tokens: list[dict[str, Any]]) -> str:
         else:
             pieces.append(tok["text"])
     return " ".join(pieces).strip()
+
+
+def load_abstractive_summary_sections(annotations_dir: Path, meeting_id: str) -> dict[str, list[str]]:
+    """Load AMI abstractive-summary reference sections for a meeting.
+
+    The AMI abstractive files expose four top-level buckets that are useful
+    both for evaluation and prompt design: `abstract`, `actions`,
+    `decisions`, and `problems`.
+
+    Returns:
+        dict[str, list[str]]: Section-to-sentences mapping. Missing files
+        return empty sections instead of raising so evaluation can remain
+        reference-optional for meetings that do not have annotations.
+    """
+    path = annotations_dir / "abstractive" / f"{meeting_id}.abssumm.xml"
+    sections = {"abstract": [], "actions": [], "decisions": [], "problems": []}
+    if not path.exists():
+        return sections
+
+    root = ET.parse(path).getroot()
+    for child in root:
+        section = _localname(child.tag)
+        if section not in sections:
+            continue
+        sentences: list[str] = []
+        for sentence in child:
+            if _localname(sentence.tag) != "sentence":
+                continue
+            text = html.unescape(" ".join((sentence.text or "").split()))
+            if text:
+                sentences.append(text)
+        sections[section] = sentences
+    return sections
+
+
+def load_abstractive_summary_text(annotations_dir: Path, meeting_id: str, section: str = "abstract") -> str:
+    """Load flattened AMI abstractive reference text for one section.
+
+    This is used by the evaluation stage to compute ROUGE against the AMI
+    human-written abstractive summary. The `abstract` section is the default
+    because it aligns best with the narrative `summary` field in
+    `mom_summary.json`.
+    """
+    sections = load_abstractive_summary_sections(annotations_dir, meeting_id)
+    sentences = sections.get(section, [])
+    return " ".join(sentences).strip()

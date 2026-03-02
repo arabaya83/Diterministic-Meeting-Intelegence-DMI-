@@ -1,7 +1,14 @@
 """Core stage-based AMI pipeline orchestration.
 
-This module coordinates all stages from ingest through evaluation and writes
-stage artifacts, run manifests, and aggregate evaluation outputs.
+This module coordinates the offline AMI workflow from ingest through
+evaluation. The stage order is intentionally explicit because downstream
+artifacts and the UI depend on stable file names and deterministic stage
+boundaries:
+
+- speech artifacts are written per meeting under `artifacts/ami/{meeting_id}/`
+- aggregate evaluation outputs are written under `artifacts/eval/ami/`
+- the final summary pass (`summary_finalize`) merges extraction findings back
+  into the MoM before evaluation so the stored summary is the user-facing one
 """
 
 from __future__ import annotations
@@ -25,6 +32,7 @@ from .schemas.models import (
     CanonicalMeeting,
     DecisionItem,
     DiarizationSegment,
+    EvidenceBackedPoint,
     ExtractionOutput,
     MinutesSummary,
     QCMetrics,
@@ -32,10 +40,18 @@ from .schemas.models import (
     TranscriptTurn,
     VADSegment,
 )
-from .utils.ami_annotations import build_utterances, load_word_tokens, reference_plain_text
+from .utils.ami_annotations import build_utterances, load_abstractive_summary_text, load_word_tokens, reference_plain_text
 from .utils.audio_utils import wav_metrics
 from .utils.determinism import configure_determinism
 from .utils.io_utils import ensure_dir, upsert_csv, upsert_jsonl, write_json, write_jsonl, write_text
+from .utils.speech_eval import (
+    compute_cpwer,
+    compute_der_approx_nooverlap,
+    load_hyp_asr_views,
+    load_hyp_diarization,
+    load_ref_diarization_from_words,
+    load_reference_asr_views,
+)
 from .utils.traceability import (
     StageTraceWriter,
     collect_code_provenance,
@@ -93,6 +109,11 @@ def run_pipeline(cfg: AppConfig, meeting_id: str) -> dict:
 
     Returns:
         dict: Manifest dictionary persisted as `run_manifest.json`.
+
+    Notes:
+        The persisted MoM artifacts reflect the post-extraction
+        `summary_finalize` stage, not the raw first-pass summary. This matters
+        for both UI rendering and ROUGE evaluation.
     """
     mlflow_run = None
     mlflow_mod = None
@@ -251,6 +272,13 @@ def run_pipeline(cfg: AppConfig, meeting_id: str) -> dict:
         lambda: stage_extract(cfg, paths, meeting_id, chunk_out, summary_out, llama_backend=llama_backend),
         meeting_id=meeting_id,
         summarizer=_summarize_extract_stage,
+    )
+        summary_out = trace_stage(
+        trace_writer,
+        "summary_finalize",
+        lambda: stage_finalize_summary(cfg, paths, meeting_id, summary_out, extract_out),
+        meeting_id=meeting_id,
+        summarizer=_summarize_summary_stage,
     )
         eval_out = trace_stage(
         trace_writer,
@@ -451,14 +479,7 @@ def stage_asr(cfg: AppConfig, paths: PipelinePaths, meeting_id: str, diar_out: d
     write_json(paths.meeting_artifacts_dir / "asr_segments.json", [s.model_dump() for s in asr_segments])
     full_lines = [f"[{s.start:.2f}-{s.end:.2f}] {s.speaker}: {s.text}" for s in asr_segments if s.text]
     write_text(paths.meeting_artifacts_dir / "full_transcript.txt", "\n".join(full_lines) + ("\n" if full_lines else ""))
-    conf_stats = {
-        "meeting_id": meeting_id,
-        "segment_count": len(asr_segments),
-        "mean_confidence": round(sum(s.confidence for s in asr_segments) / max(1, len(asr_segments)), 4),
-        "min_confidence": round(min((s.confidence for s in asr_segments), default=0.0), 4),
-    }
-    write_json(paths.meeting_artifacts_dir / "asr_confidence.json", conf_stats)
-    return {"segments": [s.model_dump() for s in asr_segments], "confidence": conf_stats}
+    return {"segments": [s.model_dump() for s in asr_segments]}
 
 
 def stage_normalize_and_canonicalize(cfg: AppConfig, paths: PipelinePaths, meeting_id: str, asr_out: dict, ingest_out: dict) -> dict:
@@ -560,6 +581,12 @@ def stage_chunking(cfg: AppConfig, paths: PipelinePaths, meeting_id: str, canon_
 
 
 def _annotate_chunks_with_asr_confidence(paths: PipelinePaths, chunks: list[dict]) -> list[dict]:
+    """Attach overlap-weighted ASR confidence estimates to transcript chunks.
+
+    The LLM backend uses these chunk-level scores only as a ranking hint. If
+    segment confidence is unavailable or zeroed by the ASR backend, the chunk
+    is left unchanged and normal lexical scoring still applies.
+    """
     asr_path = paths.meeting_artifacts_dir / "asr_segments.json"
     if not asr_path.exists():
         return chunks
@@ -603,7 +630,12 @@ def stage_summarize(
     chunk_out: dict,
     llama_backend=None,
 ) -> dict:
-    """Generate and persist Minutes of Meeting summary artifacts."""
+    """Generate and persist first-pass Minutes of Meeting summary artifacts.
+
+    This stage writes the initial `mom_summary.json` and HTML rendering from
+    transcript chunks. A later stage may deterministically enrich the summary
+    with extraction-grounded follow-up coverage.
+    """
     turns = canon_out["canonical"]["transcript_turns"]
     chunks_for_summary = _annotate_chunks_with_asr_confidence(paths, chunk_out["chunks"])
     if cfg.pipeline.summarization_backend.mode == "llama_cpp":
@@ -637,6 +669,80 @@ def stage_summarize(
             prompt_template_version="mock-v1",
             backend="mock",
         )
+    write_json(paths.meeting_artifacts_dir / "mom_summary.json", summary.model_dump())
+    html_body = [
+        "<html><head><meta charset='utf-8'><title>MoM Summary</title></head><body>",
+        f"<h1>Meeting {meeting_id}</h1>",
+        "<h2>Summary</h2>",
+        f"<p>{_html_escape(summary.summary)}</p>",
+    ]
+    html_body.append("<h2>Discussion Points</h2><ul>")
+    for item in summary.discussion_points:
+        html_body.append(f"<li><strong>{_html_escape(item.text)}</strong>")
+        if item.evidence_snippets:
+            html_body.append("<ul>")
+            html_body.extend(f"<li><em>{_html_escape(sn)}</em></li>" for sn in item.evidence_snippets)
+            html_body.append("</ul>")
+        html_body.append("</li>")
+    html_body.append("</ul>")
+    html_body.append("<h2>Follow Up</h2><ul>")
+    for item in summary.follow_up:
+        html_body.append(f"<li><strong>{_html_escape(item.text)}</strong>")
+        if item.evidence_snippets:
+            html_body.append("<ul>")
+            html_body.extend(f"<li><em>{_html_escape(sn)}</em></li>" for sn in item.evidence_snippets)
+            html_body.append("</ul>")
+        html_body.append("</li>")
+    html_body.append("</ul>")
+    html_body.append("<h2>Key Points</h2><ul>")
+    html_body.extend(f"<li>{_html_escape(pt)}</li>" for pt in summary.key_points)
+    html_body.append("</ul></body></html>")
+    write_text(paths.meeting_artifacts_dir / "mom_summary.html", "\n".join(html_body))
+    return summary.model_dump()
+
+
+def stage_finalize_summary(
+    cfg: AppConfig,
+    paths: PipelinePaths,
+    meeting_id: str,
+    summary_out: dict,
+    extract_out: dict,
+) -> dict:
+    """Finalize the MoM after extraction.
+
+    Responsibilities:
+    - merge extracted action items back into `follow_up` when they were not
+      captured in the initial summarization pass
+    - add a small amount of deterministic decision/action coverage to the
+      narrative summary when the first-pass summary omitted it
+    - rewrite both `mom_summary.json` and `mom_summary.html` so later stages
+      and the UI read a single consistent summary artifact
+    """
+    summary = MinutesSummary.model_validate(summary_out)
+    extraction = ExtractionOutput.model_validate(extract_out)
+
+    follow_up = list(summary.follow_up)
+    existing_texts = {item.text.strip().lower() for item in follow_up if item.text.strip()}
+
+    for action in extraction.action_items:
+        text = action.action.strip()
+        if not text:
+            continue
+        lowered = text.lower()
+        if lowered in existing_texts:
+            continue
+        follow_up.append(
+            EvidenceBackedPoint(
+                text=text[:240],
+                evidence_chunk_ids=action.evidence_chunk_ids[:3],
+                evidence_snippets=action.evidence_snippets[:3],
+                confidence=max(0.45, float(action.confidence or 0.0)),
+            )
+        )
+        existing_texts.add(lowered)
+
+    summary.follow_up = follow_up[:8]
+    summary.summary = _finalize_summary_narrative(summary, extraction)
     write_json(paths.meeting_artifacts_dir / "mom_summary.json", summary.model_dump())
     html_body = [
         "<html><head><meta charset='utf-8'><title>MoM Summary</title></head><body>",
@@ -750,32 +856,92 @@ def stage_evaluate(
     summary_out: dict,
     extract_out: dict,
 ) -> dict:
-    """Compute ASR metrics and structural MoM quality checks."""
+    """Compute per-meeting evaluation artifacts used by the pipeline UI.
+
+    The main pipeline evaluation stage computes:
+    - `WER`, `CER`, `cpWER`, and approximate `DER`
+    - `ROUGE-1/2/L` against AMI abstractive `abstract` references when present
+    - structural MoM quality checks
+    """
     hyp = " ".join(seg["text"] for seg in asr_out["segments"])
     ref = reference_plain_text(token_cache) if token_cache else ""
     wer = _wer(ref, hyp) if ref else None
     cer = _cer(ref, hyp) if ref else None
+    cpwer = None
+    der = None
+    cpwer_details: dict[str, object] = {}
+    der_details: dict[str, object] = {}
+    speech_metric_errors: list[str] = []
+
+    try:
+        ref_asr = load_reference_asr_views(paths.annotations_dir, meeting_id)
+        hyp_asr = load_hyp_asr_views(paths.artifacts_dir, meeting_id)
+        cpwer_details = compute_cpwer(ref_asr.get("speaker_texts", {}), hyp_asr.get("speaker_texts", {}))
+        cpwer = cpwer_details.get("cpwer")
+    except Exception as exc:
+        speech_metric_errors.append(f"cpwer:{type(exc).__name__}")
+
+    try:
+        ref_diar = load_ref_diarization_from_words(paths.annotations_dir, meeting_id)
+        hyp_diar = load_hyp_diarization(paths.artifacts_dir, meeting_id)
+        der_details = compute_der_approx_nooverlap(ref_diar, hyp_diar, collar_sec=0.25, skip_overlap=True)
+        der = der_details.get("der")
+    except Exception as exc:
+        speech_metric_errors.append(f"der:{type(exc).__name__}")
+
+    summary_ref = load_abstractive_summary_text(paths.annotations_dir, meeting_id, section="abstract")
+    summary_hyp = str(summary_out.get("summary", "") or "").strip()
+    rouge_scores = _rouge_scores(summary_ref, summary_hyp) if summary_ref else None
 
     wer_row = {
         "meeting_id": meeting_id,
         "wer": "" if wer is None else f"{wer:.6f}",
         "cer": "" if cer is None else f"{cer:.6f}",
+        "cpwer": "" if cpwer is None else f"{float(cpwer):.6f}",
+        "der": "" if der is None else f"{float(der):.6f}",
         "speech_backend": cfg.pipeline.speech_backend.mode,
     }
     upsert_csv(paths.eval_dir / "wer_scores.csv", wer_row, key="meeting_id")
+    speech_metrics_row = {
+        "meeting_id": meeting_id,
+        "wer": wer_row["wer"],
+        "cer": wer_row["cer"],
+        "cpwer": wer_row["cpwer"],
+        "der": wer_row["der"],
+        "der_false_alarm_sec": "" if der_details.get("false_alarm_sec") is None else f"{float(der_details['false_alarm_sec']):.6f}",
+        "der_miss_sec": "" if der_details.get("miss_sec") is None else f"{float(der_details['miss_sec']):.6f}",
+        "der_confusion_sec": "" if der_details.get("confusion_sec") is None else f"{float(der_details['confusion_sec']):.6f}",
+        "der_scored_ref_time_sec": "" if der_details.get("scored_ref_time_sec") is None else f"{float(der_details['scored_ref_time_sec']):.6f}",
+        "der_ignored_ref_overlap_time_sec": "" if der_details.get("ignored_ref_overlap_time_sec") is None else f"{float(der_details['ignored_ref_overlap_time_sec']):.6f}",
+        "der_method": str(der_details.get("method", "")) if der_details else "",
+        "der_collar_sec": "" if der_details.get("collar_sec") is None else f"{float(der_details['collar_sec']):.2f}",
+        "cpwer_total_ref_words": "" if cpwer_details.get("total_ref_words") is None else str(cpwer_details["total_ref_words"]),
+        "cpwer_total_edits": "" if cpwer_details.get("total_edits") is None else str(cpwer_details["total_edits"]),
+        "speech_metric_errors": ";".join(speech_metric_errors),
+    }
+    upsert_csv(paths.eval_dir / "speech_metrics.csv", speech_metrics_row, key="meeting_id")
     write_json(
         paths.eval_dir / "wer_breakdown.json",
         {
             "meeting_id": meeting_id,
             "wer": wer,
             "cer": cer,
+            "cpwer": cpwer,
+            "der": der,
+            "cpwer_details": cpwer_details,
+            "der_details": der_details,
+            "speech_metric_errors": speech_metric_errors,
             "reference_available": bool(ref),
             "hypothesis_segment_count": len(asr_out["segments"]),
         },
     )
 
-    # No AMI MoM summary reference in this scaffold; emit structural checks.
-    rouge_row = {"meeting_id": meeting_id, "rouge1": "", "rouge2": "", "rougeL": ""}
+    rouge_row = {
+        "meeting_id": meeting_id,
+        "rouge1": "" if not rouge_scores or rouge_scores["rouge1"] is None else f"{rouge_scores['rouge1']:.6f}",
+        "rouge2": "" if not rouge_scores or rouge_scores["rouge2"] is None else f"{rouge_scores['rouge2']:.6f}",
+        "rougeL": "" if not rouge_scores or rouge_scores["rougeL"] is None else f"{rouge_scores['rougeL']:.6f}",
+    }
     upsert_csv(paths.eval_dir / "rouge_scores.csv", rouge_row, key="meeting_id")
     mom_checks = {
         "meeting_id": meeting_id,
@@ -786,7 +952,14 @@ def stage_evaluate(
         "extraction_action_count": len(extract_out.get("action_items", [])),
     }
     write_json(paths.eval_dir / "mom_quality_checks.json", mom_checks)
-    return {"wer": wer, "cer": cer, "mom_quality_checks": mom_checks}
+    return {
+        "wer": wer,
+        "cer": cer,
+        "cpwer": cpwer,
+        "der": der,
+        **(rouge_scores or {}),
+        "mom_quality_checks": mom_checks,
+    }
 
 
 def normalize_text(text: str) -> str:
@@ -838,6 +1011,46 @@ def _html_escape(s: str) -> str:
     )
 
 
+def _finalize_summary_narrative(summary: MinutesSummary, extraction: ExtractionOutput) -> str:
+    """Add deterministic extraction coverage to a summary paragraph.
+
+    The goal is recall, not style. We only append short fallback sentences
+    when the first-pass summary omitted the leading decision or action item.
+    """
+    text = re.sub(r"\s+", " ", str(summary.summary or "")).strip()
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if s.strip()]
+    if not sentences and text:
+        sentences = [text]
+
+    additions: list[str] = []
+    if extraction.decisions:
+        decision = extraction.decisions[0].decision.strip().rstrip(".")
+        if decision and not _summary_contains_phrase(text, decision):
+            additions.append(f"The group made decisions on {decision[0].lower() + decision[1:]}.")
+    if extraction.action_items:
+        action = extraction.action_items[0].action.strip().rstrip(".")
+        if action and not _summary_contains_phrase(text, action):
+            if action.lower().startswith(("prepare ", "review ", "compare ", "evaluate ", "define ", "confirm ", "plan ")):
+                additions.append(f"Follow-up work included plans to {action.lower()}.")
+            else:
+                additions.append(f"Follow-up work included {action[0].lower() + action[1:]}.")
+
+    if not additions:
+        return text[:600]
+
+    finalized = " ".join((sentences + additions)[:4]).strip()
+    return finalized[:600]
+
+
+def _summary_contains_phrase(summary_text: str, phrase: str) -> bool:
+    summary_words = set(_normalize_for_eval(summary_text).split())
+    phrase_words = set(_normalize_for_eval(phrase).split())
+    if not phrase_words:
+        return False
+    overlap = len(summary_words & phrase_words)
+    return overlap >= max(2, min(len(phrase_words), 4))
+
+
 def _normalize_for_eval(s: str) -> str:
     s = s.lower()
     s = re.sub(r"\[[^\]]+\]", " ", s)
@@ -861,6 +1074,70 @@ def _cer(ref: str, hyp: str) -> float:
     if not ref_chars:
         return 0.0 if not hyp_chars else 1.0
     return _edit_distance(ref_chars, hyp_chars) / len(ref_chars)
+
+
+def _rouge_scores(ref: str, hyp: str) -> dict[str, float | None]:
+    """Compute lightweight ROUGE-F1 metrics over normalized token streams.
+
+    This intentionally avoids heavyweight external dependencies so the offline
+    pipeline can score summaries directly from local AMI references.
+    """
+    ref_tokens = _normalize_for_eval(ref).split()
+    hyp_tokens = _normalize_for_eval(hyp).split()
+    if not ref_tokens:
+        return {"rouge1": None, "rouge2": None, "rougeL": None}
+    return {
+        "rouge1": _rouge_n_f1(ref_tokens, hyp_tokens, n=1),
+        "rouge2": _rouge_n_f1(ref_tokens, hyp_tokens, n=2),
+        "rougeL": _rouge_l_f1(ref_tokens, hyp_tokens),
+    }
+
+
+def _rouge_n_f1(ref_tokens: list[str], hyp_tokens: list[str], n: int) -> float:
+    if len(ref_tokens) < n or len(hyp_tokens) < n:
+        return 0.0
+    ref_counts = _ngram_counts(ref_tokens, n)
+    hyp_counts = _ngram_counts(hyp_tokens, n)
+    overlap = sum(min(count, hyp_counts.get(gram, 0)) for gram, count in ref_counts.items())
+    ref_total = sum(ref_counts.values())
+    hyp_total = sum(hyp_counts.values())
+    if ref_total == 0 or hyp_total == 0 or overlap == 0:
+        return 0.0
+    precision = overlap / hyp_total
+    recall = overlap / ref_total
+    return 0.0 if precision + recall == 0 else (2 * precision * recall) / (precision + recall)
+
+
+def _ngram_counts(tokens: list[str], n: int) -> dict[tuple[str, ...], int]:
+    counts: dict[tuple[str, ...], int] = {}
+    for i in range(len(tokens) - n + 1):
+        gram = tuple(tokens[i : i + n])
+        counts[gram] = counts.get(gram, 0) + 1
+    return counts
+
+
+def _rouge_l_f1(ref_tokens: list[str], hyp_tokens: list[str]) -> float:
+    if not ref_tokens or not hyp_tokens:
+        return 0.0
+    lcs = _lcs_len(ref_tokens, hyp_tokens)
+    if lcs == 0:
+        return 0.0
+    precision = lcs / len(hyp_tokens)
+    recall = lcs / len(ref_tokens)
+    return 0.0 if precision + recall == 0 else (2 * precision * recall) / (precision + recall)
+
+
+def _lcs_len(a: list[str], b: list[str]) -> int:
+    prev = [0] * (len(b) + 1)
+    for token_a in a:
+        curr = [0]
+        for j, token_b in enumerate(b, start=1):
+            if token_a == token_b:
+                curr.append(prev[j - 1] + 1)
+            else:
+                curr.append(max(prev[j], curr[j - 1]))
+        prev = curr
+    return prev[-1]
 
 
 def _edit_distance(a: list[str], b: list[str]) -> int:
@@ -925,14 +1202,8 @@ def _summarize_diar_stage(out: dict) -> dict:
 
 def _summarize_asr_stage(out: dict) -> dict:
     segments = out.get("segments") if isinstance(out, dict) else None
-    conf = out.get("confidence", {}) if isinstance(out, dict) else {}
     return {
         "segment_count": len(segments) if isinstance(segments, list) else None,
-        "confidence": {
-            "segment_count": conf.get("segment_count"),
-            "mean_confidence": conf.get("mean_confidence"),
-            "min_confidence": conf.get("min_confidence"),
-        },
     }
 
 
