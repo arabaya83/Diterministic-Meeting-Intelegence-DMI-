@@ -1,11 +1,11 @@
 # Technical Report
 
-# AMI Meeting Summarization Application
+# Deterministic Meeting Intelligence (DMI) Application
 ## An Offline-First, NeMo-Centric Meeting Understanding Pipeline
 
 ---
 
-**Project Title:** meeting_sum_app — AMI Meeting Summarization Application  
+**Project Title:** Deterministic Meeting Intelligence (DMI) Application  
 **Report Type:** Capstone Project Technical Report  
 **Date:** February 28, 2026  
 **Repository:** `meeting_sum_app` (`ami-mom-pipeline` v0.1.0)  
@@ -56,7 +56,7 @@ This report predates the latest evaluation/documentation pass. The current imple
 
 ## 1. Executive Summary
 
-This report documents the design, implementation, and evaluation of the **AMI Meeting Summarization Application** (`meeting_sum_app`), a capstone project delivering an **offline-first, end-to-end pipeline** for automated meeting understanding. The system transforms raw AMI meeting audio recordings into rich, structured outputs: speaker-attributed transcripts, Minutes of Meeting (MoM) narratives, and structured extractions of decisions and action items.
+This report documents the design, implementation, and evaluation of the **Deterministic Meeting Intelligence (DMI) Application** (`meeting_sum_app`), a capstone project delivering an **offline-first, end-to-end pipeline** for automated meeting understanding. The system transforms raw AMI meeting audio recordings into rich, structured outputs: speaker-attributed transcripts, Minutes of Meeting (MoM) narratives, and structured extractions of decisions and action items.
 
 The pipeline integrates **NVIDIA NeMo** for speech processing (Voice Activity Detection, Speaker Diarization, and Automatic Speech Recognition) with **llama.cpp** running quantized large language models locally for summarization and structured information extraction. All inference is performed without any runtime network access, satisfying strict offline and auditability requirements.
 
@@ -181,7 +181,7 @@ Reproducibility is a recognized challenge in ML systems (Pineau et al., 2021). B
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                    meeting_sum_app Pipeline                          │
+│                         DMI Application Pipeline                     │
 │                                                                     │
 │  ┌──────────┐    ┌──────────────────────────────┐    ┌───────────┐ │
 │  │ AMI Raw  │    │     NeMo Speech Stack        │    │  LLM NLP  │ │
@@ -1238,7 +1238,7 @@ The `--validate-only` mode provides integration-level validation without re-runn
 
 ## 21. Conclusion
 
-The **AMI Meeting Summarization Application** successfully delivers on all stated objectives. The system provides a complete, end-to-end, offline-first pipeline from raw meeting audio to structured, schema-validated Minutes of Meeting artifacts.
+The **Deterministic Meeting Intelligence (DMI) Application** successfully delivers on all stated objectives. The system provides a complete, end-to-end, offline-first pipeline from raw meeting audio to structured, schema-validated Minutes of Meeting artifacts.
 
 **Key contributions**:
 

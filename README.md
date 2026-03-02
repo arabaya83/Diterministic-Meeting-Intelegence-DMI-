@@ -1,4 +1,4 @@
-# AMI Meeting Understanding Pipeline (Offline-First, NeMo + llama.cpp)
+# Deterministic Meeting Intelligence (DMI) Application (Offline-First, NeMo + llama.cpp)
 
 This repository contains a stage-based AMI meeting understanding pipeline aligned to the provided NeMo-centric architecture:
 
