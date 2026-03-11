@@ -1,3 +1,5 @@
+"""Pydantic models defining the UI backend API contract."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -11,6 +13,8 @@ StageState = Literal["success", "warn", "fail", "not_run", "in_progress"]
 
 
 class ArtifactEntry(BaseModel):
+    """Metadata describing one artifact exposed through the API."""
+
     name: str
     path: str
     relative_path: str
@@ -22,6 +26,8 @@ class ArtifactEntry(BaseModel):
 
 
 class StageArtifactLink(BaseModel):
+    """UI-facing link metadata for one artifact tied to a pipeline stage."""
+
     name: str
     exists: bool
     artifact_url: str
@@ -29,6 +35,8 @@ class StageArtifactLink(BaseModel):
 
 
 class StageStatus(BaseModel):
+    """Computed status summary for a single pipeline stage."""
+
     name: str
     key: str
     status: StageState
@@ -38,6 +46,8 @@ class StageStatus(BaseModel):
 
 
 class MeetingListItem(BaseModel):
+    """Compact meeting summary row used by list and dashboard responses."""
+
     meeting_id: str
     has_raw_audio: bool
     has_staged_audio: bool
@@ -52,6 +62,8 @@ class MeetingListItem(BaseModel):
 
 
 class MeetingStatusResponse(BaseModel):
+    """Detailed meeting status payload returned by the status endpoint."""
+
     meeting_id: str
     summary: MeetingListItem
     stages: list[StageStatus]
@@ -60,24 +72,32 @@ class MeetingStatusResponse(BaseModel):
 
 
 class ArtifactPreview(BaseModel):
+    """Artifact preview payload containing metadata and decoded content."""
+
     meeting_id: str
     artifact: ArtifactEntry
     content: Any = None
 
 
 class EvalSummaryResponse(BaseModel):
+    """Aggregate evaluation payload for dashboard and summary views."""
+
     aggregate_metrics: dict[str, Any]
     rows: list[dict[str, Any]]
     latest_meeting: str | None = None
 
 
 class MeetingEvalResponse(BaseModel):
+    """Evaluation details for one meeting."""
+
     meeting_id: str
     metrics: dict[str, Any]
     quality_checks: dict[str, Any] | None = None
 
 
 class MeetingReproResponse(BaseModel):
+    """Reproducibility artifact bundle for one meeting."""
+
     meeting_id: str
     config_digest: str | None = None
     artifact_digest: str | None = None
@@ -88,18 +108,24 @@ class MeetingReproResponse(BaseModel):
 
 
 class ConfigEntry(BaseModel):
+    """Listing entry for one pipeline config file."""
+
     name: str
     path: str
     size_bytes: int
 
 
 class ConfigResponse(BaseModel):
+    """Config file contents returned by the config-detail endpoint."""
+
     name: str
     path: str
     content: str
 
 
 class DashboardResponse(BaseModel):
+    """Dashboard payload combining system state, metrics, and recent meetings."""
+
     system_state: dict[str, Any]
     last_run: MeetingListItem | None = None
     aggregate_metrics: dict[str, Any]
@@ -107,11 +133,15 @@ class DashboardResponse(BaseModel):
 
 
 class GovernanceResponse(BaseModel):
+    """Top-level governance response grouping bundle and MLflow listings."""
+
     evidence_bundles: list[dict[str, Any]]
     mlflow: dict[str, Any]
 
 
 class RunFeatureResponse(BaseModel):
+    """Feature-flag response for run-control capabilities."""
+
     enabled: bool
     message: str
 
@@ -121,6 +151,8 @@ RunState = Literal["queued", "running", "completed", "failed", "cancelled"]
 
 
 class RunCreateRequest(BaseModel):
+    """Request payload for launching a new run from the UI."""
+
     meeting_id: str | None = None
     meeting_ids: list[str] = Field(default_factory=list)
     config: str
@@ -128,6 +160,8 @@ class RunCreateRequest(BaseModel):
 
 
 class RunStageProgress(BaseModel):
+    """Per-stage progress row included in run status responses."""
+
     key: str
     name: str
     status: Literal["pending", "running", "completed", "failed", "not_run"]
@@ -136,6 +170,8 @@ class RunStageProgress(BaseModel):
 
 
 class RunProgressSummary(BaseModel):
+    """Aggregated progress information derived from stage-trace events."""
+
     current_stage_key: str | None = None
     current_stage_name: str | None = None
     completed_stages: int = 0
@@ -145,6 +181,8 @@ class RunProgressSummary(BaseModel):
 
 
 class RunStatusResponse(BaseModel):
+    """Detailed run status returned by polling and websocket updates."""
+
     run_id: str
     meeting_id: str
     meeting_ids: list[str] = Field(default_factory=list)
@@ -163,11 +201,15 @@ class RunStatusResponse(BaseModel):
 
 
 class RunCancelResponse(BaseModel):
+    """Response payload for run cancellation requests."""
+
     run_id: str
     status: RunState
 
 
 class MeetingRunEntry(BaseModel):
+    """Compact run row used in meeting-specific run listings."""
+
     run_id: str | None = None
     meeting_id: str
     meeting_ids: list[str] = Field(default_factory=list)
@@ -181,6 +223,8 @@ class MeetingRunEntry(BaseModel):
 
 
 class MeetingSpeechResponse(BaseModel):
+    """Speech-artifact payload for a meeting detail page."""
+
     meeting_id: str
     audio: dict[str, Any]
     vad_segments: list[dict[str, Any]] = Field(default_factory=list)
@@ -189,6 +233,8 @@ class MeetingSpeechResponse(BaseModel):
 
 
 class MeetingTranscriptResponse(BaseModel):
+    """Transcript-artifact payload for a meeting detail page."""
+
     meeting_id: str
     raw: list[dict[str, Any]] = Field(default_factory=list)
     normalized: list[dict[str, Any]] = Field(default_factory=list)
@@ -196,6 +242,8 @@ class MeetingTranscriptResponse(BaseModel):
 
 
 class MeetingSummaryResponse(BaseModel):
+    """Summary-artifact payload for a meeting detail page."""
+
     meeting_id: str
     summary: dict[str, Any] = Field(default_factory=dict)
     html_available: bool = False
@@ -203,11 +251,15 @@ class MeetingSummaryResponse(BaseModel):
 
 
 class MeetingExtractionResponse(BaseModel):
+    """Extraction-artifact payload for a meeting detail page."""
+
     meeting_id: str
     extraction: dict[str, Any] = Field(default_factory=dict)
     validation_report: dict[str, Any] = Field(default_factory=dict)
 
 
 class GovernanceListResponse(BaseModel):
+    """Simple list response used by governance sub-endpoints."""
+
     items: list[dict[str, Any]] = Field(default_factory=list)
     configured: bool | None = None

@@ -1,3 +1,5 @@
+"""Regression tests for batch-level offline MLflow logging."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -10,10 +12,12 @@ from ami_mom_pipeline.config import AppConfig
 
 
 def _mlflow_available() -> bool:
+    """Return whether MLflow is importable in the current environment."""
     return importlib.util.find_spec("mlflow") is not None
 
 
 def _load_batch_runner_module():
+    """Import the batch runner script as a module for helper testing."""
     root = Path(__file__).resolve().parents[1]
     path = root / "scripts" / "run_nemo_batch_sequential.py"
     spec = importlib.util.spec_from_file_location("run_nemo_batch_sequential", path)
@@ -24,6 +28,7 @@ def _load_batch_runner_module():
 
 
 def test_batch_mlflow_logging_writes_aggregate_metrics_and_summary_artifact(tmp_path: Path) -> None:
+    """Batch MLflow logging should record aggregate metrics and summary artifacts."""
     if not _mlflow_available():
         pytest.skip("mlflow is not installed")
     mod = _load_batch_runner_module()

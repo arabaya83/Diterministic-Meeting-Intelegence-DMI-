@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+"""Compare reproducibility digests across artifact roots.
+
+The audit reads manifests and reproducibility reports from the current artifact
+tree plus optional snapshot roots, then reports whether digests agree for each
+selected meeting.
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -17,6 +24,7 @@ from ami_mom_pipeline.pipeline import list_meetings  # noqa: E402
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build the CLI parser for reproducibility audits."""
     p = argparse.ArgumentParser(description="Reproducibility audit for AMI pipeline manifests/reports")
     p.add_argument("--config", default="configs/pipeline.nemo.llama.yaml")
     p.add_argument("--meeting-id", dest="meeting_ids", action="append", default=None, help="Explicit meeting ID (repeatable)")
@@ -33,6 +41,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    """Run the reproducibility audit and write the JSON report."""
     args = build_parser().parse_args()
     cfg = AppConfig.load(args.config if Path(args.config).exists() else None)
     meetings = _select_meetings(cfg, args.meeting_ids, args.prefix, args.limit)
@@ -60,6 +69,7 @@ def main() -> int:
 
 
 def _select_meetings(cfg: AppConfig, explicit: list[str] | None, prefix: str | None, limit: int | None) -> list[str]:
+    """Select meetings from explicit ids or deterministic discovery."""
     if explicit:
         meetings = list(dict.fromkeys(explicit))
     else:
@@ -72,6 +82,7 @@ def _select_meetings(cfg: AppConfig, explicit: list[str] | None, prefix: str | N
 
 
 def _read_snapshot(root: Path, meeting_id: str) -> dict[str, Any]:
+    """Read one meeting snapshot from a given artifact root."""
     manifest_path = root / "ami" / meeting_id / "run_manifest.json"
     repro_path = root / "ami" / meeting_id / "reproducibility_report.json"
     rec: dict[str, Any] = {"root": str(root), "meeting_id": meeting_id}
@@ -98,6 +109,7 @@ def _read_snapshot(root: Path, meeting_id: str) -> dict[str, Any]:
 
 
 def _compare_snapshots(meeting_id: str, snapshots: list[dict[str, Any]]) -> dict[str, Any]:
+    """Compare digests across all available snapshots for one meeting."""
     present = [s for s in snapshots if not s.get("missing_manifest") and not s.get("manifest_read_error")]
     artifact_digests = sorted({str(s.get("artifact_digest")) for s in present if s.get("artifact_digest") is not None})
     config_digests = sorted({str(s.get("config_digest")) for s in present if s.get("config_digest") is not None})
@@ -115,6 +127,7 @@ def _compare_snapshots(meeting_id: str, snapshots: list[dict[str, Any]]) -> dict
 
 
 def _summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Summarize mismatch counts across all audited meetings."""
     mismatched = 0
     artifact_mismatch = 0
     config_mismatch = 0

@@ -1,4 +1,10 @@
 #!/usr/bin/env python3
+"""Shared artifact helpers for the NeMo wrapper scripts.
+
+These functions keep the VAD, diarization, and ASR wrappers aligned on JSON and
+RTTM output schemas without moving inference logic into the core pipeline.
+"""
+
 from __future__ import annotations
 
 import json
@@ -7,21 +13,25 @@ from typing import Any
 
 
 def ensure_dir(path: Path) -> Path:
+    """Create a directory tree if needed and return the path."""
     path.mkdir(parents=True, exist_ok=True)
     return path
 
 
 def write_json(path: Path, data: Any) -> None:
+    """Write JSON using the stable formatting expected by the repository."""
     ensure_dir(path.parent)
     path.write_text(json.dumps(data, indent=2, sort_keys=True, ensure_ascii=True) + "\n", encoding="utf-8")
 
 
 def write_text(path: Path, text: str) -> None:
+    """Write plain text after ensuring the parent directory exists."""
     ensure_dir(path.parent)
     path.write_text(text, encoding="utf-8")
 
 
 def parse_rttm(path: Path) -> list[dict[str, Any]]:
+    """Parse the minimal RTTM fields used by the wrapper contract."""
     rows: list[dict[str, Any]] = []
     with path.open("r", encoding="utf-8") as f:
         for line in f:
@@ -43,6 +53,7 @@ def parse_rttm(path: Path) -> list[dict[str, Any]]:
 
 
 def diarization_json_from_rttm(path: Path) -> list[dict[str, Any]]:
+    """Convert RTTM speaker segments into JSON diarization artifacts."""
     segs = []
     for row in parse_rttm(path):
         segs.append(
@@ -58,6 +69,7 @@ def diarization_json_from_rttm(path: Path) -> list[dict[str, Any]]:
 
 
 def vad_json_from_rttm(path: Path) -> list[dict[str, Any]]:
+    """Derive coarse speech segments from diarization RTTM content."""
     diar = diarization_json_from_rttm(path)
     # Merge overlapping/adjacent diarization segments into speech regions.
     merged: list[dict[str, Any]] = []
@@ -75,6 +87,7 @@ def vad_json_from_rttm(path: Path) -> list[dict[str, Any]]:
 
 
 def write_vad_rttm(path: Path, meeting_id: str, segs: list[dict[str, Any]]) -> None:
+    """Write VAD segments to RTTM using the repository naming convention."""
     lines = [
         f"SPEAKER {meeting_id} 1 {s['start']:.3f} {(s['end']-s['start']):.3f} <NA> <NA> speech <NA> <NA>"
         for s in segs
@@ -83,9 +96,9 @@ def write_vad_rttm(path: Path, meeting_id: str, segs: list[dict[str, Any]]) -> N
 
 
 def write_diar_rttm(path: Path, meeting_id: str, segs: list[dict[str, Any]]) -> None:
+    """Write diarization segments to RTTM in stable sorted order."""
     lines = [
         f"SPEAKER {meeting_id} 1 {s['start']:.3f} {(s['end']-s['start']):.3f} <NA> <NA> {s['speaker']} <NA> <NA>"
         for s in segs
     ]
     write_text(path, "\n".join(lines) + ("\n" if lines else ""))
-

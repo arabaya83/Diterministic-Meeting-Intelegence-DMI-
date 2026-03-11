@@ -1,3 +1,5 @@
+"""Regression tests for NeMo ASR confidence extraction helpers."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -16,6 +18,7 @@ SPEC.loader.exec_module(nemo_asr)
 
 
 def test_extract_confidence_prefers_word_confidence_lists() -> None:
+    """Word-confidence lists should drive the extracted confidence score."""
     item = {
         "text": "hello world",
         "word_confidence": [0.75, 0.85],
@@ -24,6 +27,7 @@ def test_extract_confidence_prefers_word_confidence_lists() -> None:
 
 
 def test_extract_confidence_flattens_nested_frame_confidence() -> None:
+    """Nested frame-confidence lists should be flattened before averaging."""
     item = {
         "text": "hello world",
         "frame_confidence": [[0.2, 0.4], [0.6, 0.8]],
@@ -32,10 +36,14 @@ def test_extract_confidence_flattens_nested_frame_confidence() -> None:
 
 
 def test_call_transcribe_compat_requests_hypotheses_when_supported() -> None:
+    """Compatibility calls should request hypotheses when the API supports it."""
     calls: list[tuple[tuple, dict]] = []
 
     class DummyModel:
+        """Minimal fake model exposing a compatible ``transcribe`` method."""
+
         def transcribe(self, paths2audio_files, batch_size: int = 4, return_hypotheses: bool = False):
+            """Record invocation kwargs and return a stub hypothesis payload."""
             calls.append((tuple(paths2audio_files), {"batch_size": batch_size, "return_hypotheses": return_hypotheses}))
             return [{"text": "ok", "word_confidence": [0.9]}]
 

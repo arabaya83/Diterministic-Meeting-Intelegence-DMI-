@@ -1,3 +1,5 @@
+"""Regression tests for validate-only mode and strict determinism checks."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -11,6 +13,7 @@ import ami_mom_pipeline.pipeline as pipeline_mod
 
 
 def _load_batch_runner_module():
+    """Import the batch runner script as a module for helper testing."""
     root = Path(__file__).resolve().parents[1]
     path = root / "scripts" / "run_nemo_batch_sequential.py"
     spec = importlib.util.spec_from_file_location("run_nemo_batch_sequential", path)
@@ -21,6 +24,7 @@ def _load_batch_runner_module():
 
 
 def test_validate_only_record_ok_when_manifest_exists(tmp_path: Path) -> None:
+    """Validate-only records should succeed when a manifest already exists."""
     mod = _load_batch_runner_module()
     cfg = AppConfig()
     cfg.paths.artifacts_dir = str(tmp_path / "artifacts")
@@ -40,6 +44,7 @@ def test_validate_only_record_ok_when_manifest_exists(tmp_path: Path) -> None:
 
 
 def test_validate_only_record_fails_when_manifest_missing(tmp_path: Path) -> None:
+    """Validate-only records should fail when no manifest is present."""
     mod = _load_batch_runner_module()
     cfg = AppConfig()
     cfg.paths.artifacts_dir = str(tmp_path / "artifacts")
@@ -51,6 +56,7 @@ def test_validate_only_record_fails_when_manifest_missing(tmp_path: Path) -> Non
 
 
 def test_run_pipeline_strict_determinism_risk_raises_early(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Strict determinism mode should raise before stage execution on known risks."""
     cfg = AppConfig()
     cfg.runtime.offline = True
     cfg.runtime.fail_on_determinism_risks = True
@@ -61,6 +67,7 @@ def test_run_pipeline_strict_determinism_risk_raises_early(monkeypatch: pytest.M
     cfg.paths.raw_audio_dir = str(tmp_path / "audio")
 
     def fake_configure_determinism(seed: int, strict: bool = True):
+        """Inject a deterministic fake report containing one strict-mode risk."""
         return {
             "seed": seed,
             "strict_requested": strict,

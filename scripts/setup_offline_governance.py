@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+"""Create baseline governance scaffolding for offline repository use.
+
+The script writes missing directories and template files needed by local DVC
+and MLflow workflows. Existing files are preserved so repeated runs remain
+safe and idempotent apart from manifest regeneration.
+"""
+
 from __future__ import annotations
 
 import json
@@ -9,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def write_if_missing(path: Path, text: str) -> bool:
+    """Write a text file only when it does not already exist."""
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
         return False
@@ -17,10 +25,12 @@ def write_if_missing(path: Path, text: str) -> bool:
 
 
 def ensure_dir(path: Path) -> None:
+    """Create a directory tree if it is missing."""
     path.mkdir(parents=True, exist_ok=True)
 
 
 def main() -> int:
+    """Create the governance scaffold and emit a manifest of results."""
     created: list[str] = []
     existing: list[str] = []
 

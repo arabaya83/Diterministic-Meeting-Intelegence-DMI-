@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Normalize NeMo diarization outputs into stable repository artifacts."""
+
 from __future__ import annotations
 
 import argparse
@@ -13,6 +15,7 @@ from nemo_contract import diarization_json_from_rttm, ensure_dir, write_diar_rtt
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse CLI arguments for the diarization wrapper."""
     p = argparse.ArgumentParser(description="NeMo diarization wrapper for AMI pipeline artifact contract")
     p.add_argument("--audio", required=True)
     p.add_argument("--config", required=False, help="Local NeMo diarizer YAML config")
@@ -41,6 +44,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    """Run the selected diarization path and emit normalized outputs."""
     args = parse_args()
     out_dir = ensure_dir(Path(args.out_dir))
     diar_rttm = out_dir / "diarization.rttm"
@@ -102,6 +106,7 @@ def run_nemo_diarizer_api(
     merge_same_speaker_gap_sec: float,
     min_segment_sec: float,
 ) -> None:
+    """Invoke the NeMo diarizer API and normalize its produced artifacts."""
     if config_path is None:
         raise ValueError("--config is required with --try-nemo-api")
     if not config_path.exists():
@@ -166,9 +171,11 @@ def run_nemo_diarizer_api(
 
 
 def _debug_and_force_clustering_cuda(diarizer, cfg, torch_mod) -> None:
+    """Log and best-effort adjust NeMo diarizer device placement."""
     cfg_device = str(getattr(cfg, "device", ""))
 
     def _device_of(obj) -> str:
+        """Safely stringify a submodule device for debug logs."""
         try:
             return str(getattr(obj, "device"))
         except Exception:
@@ -227,6 +234,7 @@ def postprocess_segments(
     merge_same_speaker_gap_sec: float,
     min_segment_sec: float,
 ) -> list[dict]:
+    """Clean, merge, and prune diarization segments before persistence."""
     cleaned = [
         {
             "start": round(float(s["start"]), 3),
@@ -247,6 +255,7 @@ def postprocess_segments(
 
 
 def _merge_same_speaker_gaps(segs: list[dict], max_gap_sec: float) -> list[dict]:
+    """Merge adjacent same-speaker segments separated by a small gap."""
     if not segs:
         return []
     out = [dict(segs[0])]

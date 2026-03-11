@@ -1,3 +1,5 @@
+"""Tests for local file-based MLflow logging in the mock pipeline flow."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -11,10 +13,12 @@ from ami_mom_pipeline.pipeline import run_pipeline
 
 
 def _mlflow_available() -> bool:
+    """Return whether MLflow is importable in the current environment."""
     return importlib.util.find_spec("mlflow") is not None
 
 
 def test_mlflow_local_file_logging_mock_pipeline(tmp_path: Path) -> None:
+    """Pipeline runs should log to a local file-based MLflow store when enabled."""
     if not _mlflow_available():
         pytest.skip("mlflow is not installed")
 

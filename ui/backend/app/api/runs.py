@@ -1,3 +1,5 @@
+"""Run-control and run-monitoring API routes for the backend."""
+
 from __future__ import annotations
 
 import asyncio
@@ -11,6 +13,7 @@ router = APIRouter(prefix="/api/runs", tags=["runs"])
 
 
 def serialize_run(runner, record):
+    """Project an internal run record into the API response schema."""
     return RunStatusResponse(
         run_id=record.run_id,
         meeting_id=record.meeting_id,
@@ -32,6 +35,7 @@ def serialize_run(runner, record):
 
 @router.get("", response_model=list[MeetingRunEntry])
 async def list_runs():
+    """Return all live and historical runs known to the backend."""
     runner = get_runner()
     rows = runner.list_runs()
     return [MeetingRunEntry(**row) for row in rows]
@@ -39,6 +43,7 @@ async def list_runs():
 
 @router.post("", response_model=RunStatusResponse)
 async def create_run(payload: RunCreateRequest):
+    """Start a new batch runner subprocess from the API."""
     runner = get_runner()
     record = runner.create_run(payload)
     return serialize_run(runner, record)
@@ -46,6 +51,7 @@ async def create_run(payload: RunCreateRequest):
 
 @router.get("/{run_id}", response_model=RunStatusResponse)
 async def get_run(run_id: str):
+    """Return the latest state for a single run identifier."""
     runner = get_runner()
     record = runner.get_run(run_id)
     return serialize_run(runner, record)
@@ -53,6 +59,7 @@ async def get_run(run_id: str):
 
 @router.post("/{run_id}/cancel", response_model=RunStatusResponse)
 async def cancel_run(run_id: str):
+    """Request cancellation for a running subprocess-backed run."""
     runner = get_runner()
     record = runner.cancel_run(run_id)
     return serialize_run(runner, record)
@@ -60,6 +67,7 @@ async def cancel_run(run_id: str):
 
 @router.get("/meeting/{meeting_id}", response_model=list[MeetingRunEntry])
 async def list_meeting_runs(meeting_id: str):
+    """Return runs associated with one meeting."""
     runner = get_runner()
     rows = runner.list_runs_for_meeting(meeting_id)
     return [MeetingRunEntry(**row) for row in rows]
@@ -67,6 +75,7 @@ async def list_meeting_runs(meeting_id: str):
 
 @router.websocket("/ws/{run_id}")
 async def run_updates(websocket: WebSocket, run_id: str):
+    """Stream run status changes over a websocket until completion."""
     runner = get_runner()
     await websocket.accept()
     last_payload = None

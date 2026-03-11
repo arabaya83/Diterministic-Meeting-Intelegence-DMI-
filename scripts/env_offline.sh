@@ -2,9 +2,11 @@
 # Offline/cache defaults for the AMI NeMo pipeline (repo-local).
 # Usage:
 #   source scripts/env_offline.sh
+# This script is intended to be sourced so the exports remain in the caller.
 
 _ami_repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+# Keep caches inside the repository to support reproducible offline runs.
 export HF_HOME="$_ami_repo_root/.cache/hf"
 export TORCH_HOME="$_ami_repo_root/.cache/torch"
 export JOBLIB_TEMP_FOLDER="$_ami_repo_root/.cache/joblib"

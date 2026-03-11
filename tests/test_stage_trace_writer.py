@@ -1,3 +1,5 @@
+"""Regression tests for stage-trace file lifecycle behavior."""
+
 from __future__ import annotations
 
 import json
@@ -7,6 +9,7 @@ from ami_mom_pipeline.utils.traceability import StageTraceWriter
 
 
 def _read_jsonl(path: Path) -> list[dict]:
+    """Read a JSONL trace file into memory for assertions."""
     rows = []
     with path.open("r", encoding="utf-8") as f:
         for line in f:
@@ -17,6 +20,7 @@ def _read_jsonl(path: Path) -> list[dict]:
 
 
 def test_stage_trace_writer_truncates_on_new_run(tmp_path: Path) -> None:
+    """Starting a new traced run should truncate prior stage events."""
     trace_path = tmp_path / "artifacts" / "ami" / "ES2005a" / "stage_trace.jsonl"
 
     writer1 = StageTraceWriter(trace_path, enabled=True, truncate_on_init=True)

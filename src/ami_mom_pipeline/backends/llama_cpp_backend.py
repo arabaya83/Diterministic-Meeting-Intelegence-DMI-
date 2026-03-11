@@ -368,10 +368,12 @@ class LlamaCppBackend:
 
     @staticmethod
     def _fallback_key_points(summary_text: str) -> list[str]:
+        """Derive fallback key points by splitting summary prose into clauses."""
         parts = [p.strip() for p in re.split(r"[.;]\s+", summary_text) if p.strip()]
         return parts[:5]
 
     def _filter_key_points(self, items: list[str]) -> list[str]:
+        """Drop duplicate or low-quality key-point candidates."""
         out: list[str] = []
         for item in items:
             text = self._clean_summary_text(item)
@@ -387,6 +389,7 @@ class LlamaCppBackend:
         return out
 
     def _normalize_summary_texts(self, items: list[str], kind: str) -> list[str]:
+        """Normalize and deduplicate summary-point text for one bucket."""
         out: list[str] = []
         for item in items:
             text = self._normalize_summary_point_text(item, kind=kind)
@@ -428,6 +431,7 @@ class LlamaCppBackend:
 
     @classmethod
     def _normalize_summary_point_text(cls, text: str, kind: str) -> str:
+        """Normalize one summary-point string for storage and display."""
         cleaned = cls._clean_summary_text(text)
         if not cleaned:
             return ""
@@ -462,6 +466,7 @@ class LlamaCppBackend:
 
     @classmethod
     def _normalize_summary_narrative(cls, summary_text: str, chunks: list[dict[str, Any]]) -> str:
+        """Downgrade unsupported narrative claims using transcript evidence."""
         text = cls._clean_summary_text(summary_text)
         if not text:
             return text
@@ -492,6 +497,7 @@ class LlamaCppBackend:
 
     @classmethod
     def _coverage_chunks_for_prompt(cls, chunks: list[dict[str, Any]], limit: int = 24) -> list[dict[str, Any]]:
+        """Select prompt chunks that preserve both cues and broad coverage."""
         if len(chunks) <= limit:
             return chunks
         chosen: dict[int, dict[str, Any]] = {}
@@ -517,6 +523,7 @@ class LlamaCppBackend:
         chunks: list[dict[str, Any]],
         kind: str,
     ) -> list[EvidenceBackedPoint]:
+        """Attach supporting chunk ids and snippets to summary-point text."""
         out: list[EvidenceBackedPoint] = []
         min_score = 2 if kind == "discussion" else 4
         for point_text in point_texts:
@@ -547,6 +554,7 @@ class LlamaCppBackend:
         discussion_texts: list[str],
         chunks: list[dict[str, Any]],
     ) -> list[EvidenceBackedPoint]:
+        """Recover follow-up items from discussion evidence when parsing is weak."""
         candidates: list[str] = []
         for text in list(discussion_texts) + list(key_points):
             t = self._clean_summary_text(text)
@@ -579,6 +587,7 @@ class LlamaCppBackend:
         items: list[EvidenceBackedPoint],
         kind: str,
     ) -> list[EvidenceBackedPoint]:
+        """Filter evidence-backed points down to the persisted summary contract."""
         kept: list[EvidenceBackedPoint] = []
         for item in items:
             text = (item.text or "").strip()
@@ -600,6 +609,7 @@ class LlamaCppBackend:
 
     @classmethod
     def _is_low_quality_summary_text(cls, text: str, kind: str) -> bool:
+        """Reject noisy or weak summary-point candidates for one bucket."""
         if cls._is_low_quality_text(text, kind="decision"):
             return True
         lowered = cls._norm_text(text)
@@ -688,6 +698,7 @@ class LlamaCppBackend:
 
     @classmethod
     def _is_low_quality_key_point(cls, text: str) -> bool:
+        """Reject low-signal key-point candidates that often come from ASR noise."""
         lowered = cls._norm_text(text)
         if cls._is_low_quality_summary_text(text, kind="discussion"):
             return True
@@ -702,6 +713,7 @@ class LlamaCppBackend:
 
     @classmethod
     def _looks_like_follow_up_candidate(cls, text: str) -> bool:
+        """Heuristically detect text that resembles future work or open questions."""
         lowered = cls._norm_text(text)
         cues = (
             "next ",
@@ -721,6 +733,7 @@ class LlamaCppBackend:
 
     @staticmethod
     def _evidence_snippet_quality(snippet: str) -> float:
+        """Score how readable and contentful an evidence snippet looks."""
         s = (snippet or "").strip()
         if not s:
             return 0.0
@@ -732,6 +745,7 @@ class LlamaCppBackend:
 
     @staticmethod
     def _extract_json_objects(text: str) -> list[dict[str, Any]]:
+        """Recover JSON objects embedded inside noisy model output."""
         out: list[dict[str, Any]] = []
         dec = json.JSONDecoder()
         for m in re.finditer(r"\{", text):
@@ -823,6 +837,7 @@ class LlamaCppBackend:
 
     @staticmethod
     def _clean_summary_text(s: str) -> str:
+        """Strip repeated prompt artifacts and collapse whitespace."""
         text = (s or "").strip()
         if not text:
             return ""
@@ -841,6 +856,7 @@ class LlamaCppBackend:
 
     @staticmethod
     def _clean_summary_list(items: list[Any], limit: int) -> list[str]:
+        """Normalize a list-valued summary bucket and drop duplicates."""
         out: list[str] = []
         for x in items or []:
             if isinstance(x, dict):
@@ -864,6 +880,7 @@ class LlamaCppBackend:
         point_text: str,
         chunks: list[dict[str, Any]],
     ) -> list[tuple[int, dict[str, Any]]]:
+        """Return the top supporting chunks for one candidate point."""
         scored: list[tuple[int, int, dict[str, Any]]] = []
         for idx, chunk in enumerate(chunks):
             lexical_score = self._score_chunk_for_point(point_text, str(chunk.get("text", "") or ""))
@@ -878,6 +895,7 @@ class LlamaCppBackend:
 
     @classmethod
     def _score_chunk_for_point(cls, point_text: str, chunk_text: str) -> int:
+        """Score lexical support between a point candidate and one chunk."""
         lowered_point = (point_text or "").lower()
         lowered_chunk = (chunk_text or "").lower()
         if not lowered_chunk:
@@ -898,6 +916,7 @@ class LlamaCppBackend:
 
     @staticmethod
     def _chunk_asr_confidence(chunk: dict[str, Any]) -> float:
+        """Read a bounded ASR confidence estimate from chunk metadata."""
         for key in ("asr_confidence", "avg_asr_confidence", "confidence"):
             try:
                 if key in chunk and chunk.get(key) is not None:
@@ -907,6 +926,7 @@ class LlamaCppBackend:
         return 0.5
 
     def _apply_asr_confidence_downrank(self, lexical_score: int, chunk: dict[str, Any]) -> int:
+        """Down-rank chunk support when ASR confidence is low."""
         if lexical_score <= 0:
             return 0
         conf = self._chunk_asr_confidence(chunk)
@@ -918,6 +938,7 @@ class LlamaCppBackend:
 
     @staticmethod
     def _score_summary_obj(obj: dict[str, Any]) -> int:
+        """Score parsed summary JSON candidates to choose the best one."""
         summary = str(obj.get("summary", "") or "").strip()
         if not summary:
             return -1
@@ -939,6 +960,7 @@ class LlamaCppBackend:
         prev_chunk: dict[str, Any] | None = None,
         next_chunk: dict[str, Any] | None = None,
     ) -> str:
+        """Build the extraction prompt for one focus chunk and its context."""
         focus_text = LlamaCppBackend._model_visible_chunk_text(chunk)
         sections = []
         if prev_chunk:
@@ -979,6 +1001,7 @@ class LlamaCppBackend:
 
     @staticmethod
     def _parse_extraction_json(text: str) -> dict[str, Any] | None:
+        """Parse extraction JSON from possibly noisy model output."""
         if not text:
             return None
         stripped = text.strip()
@@ -1007,6 +1030,7 @@ class LlamaCppBackend:
 
     @staticmethod
     def _bounded_conf(v: Any, default: float) -> float:
+        """Clamp a confidence-like value into the closed interval ``[0, 1]``."""
         try:
             x = float(v)
         except Exception:
@@ -1019,9 +1043,11 @@ class LlamaCppBackend:
 
     @staticmethod
     def _norm_text(s: str) -> str:
+        """Normalize text for deduplication and heuristic matching."""
         return re.sub(r"\s+", " ", s.strip().lower())
 
     def _dedupe_decisions(self, items: list[DecisionItem]) -> list[DecisionItem]:
+        """Merge duplicate decisions while preserving the strongest evidence."""
         seen: dict[str, DecisionItem] = {}
         for it in items:
             k = self._norm_text(it.decision)
@@ -1038,6 +1064,7 @@ class LlamaCppBackend:
         return list(seen.values())[:30]
 
     def _dedupe_actions(self, items: list[ActionItem]) -> list[ActionItem]:
+        """Merge duplicate action items while preserving useful metadata."""
         seen: dict[str, ActionItem] = {}
         for it in items:
             k = self._norm_text(it.action)
@@ -1058,6 +1085,7 @@ class LlamaCppBackend:
         return list(seen.values())[:50]
 
     def _filter_decisions(self, items: list[DecisionItem]) -> tuple[list[DecisionItem], int]:
+        """Filter low-quality decision candidates and count dropped rows."""
         kept: list[DecisionItem] = []
         dropped = 0
         for it in items:
@@ -1068,6 +1096,7 @@ class LlamaCppBackend:
         return kept, dropped
 
     def _filter_actions(self, items: list[ActionItem]) -> tuple[list[ActionItem], int]:
+        """Filter low-quality or speculative action candidates."""
         kept: list[ActionItem] = []
         dropped = 0
         for it in items:
@@ -1082,6 +1111,7 @@ class LlamaCppBackend:
 
     @classmethod
     def _is_low_quality_text(cls, text: str, kind: str) -> bool:
+        """Reject generic, fragmentary, or obviously noisy extraction text."""
         s = (text or "").strip()
         if not s:
             return True
@@ -1133,6 +1163,7 @@ class LlamaCppBackend:
 
     @classmethod
     def _is_speculative_action_text(cls, text: str) -> bool:
+        """Reject speculative brainstorm fragments that look unlike real actions."""
         lowered = cls._norm_text(text)
         speculative_phrases = (
             "fruit like",
@@ -1151,6 +1182,7 @@ class LlamaCppBackend:
 
     @staticmethod
     def _merge_snippets(a: list[str], b: list[str]) -> list[str]:
+        """Merge, deduplicate, and truncate evidence snippets."""
         out: list[str] = []
         for s in list(a or []) + list(b or []):
             ss = str(s).strip()
@@ -1163,6 +1195,7 @@ class LlamaCppBackend:
 
     @staticmethod
     def _evidence_snippet(chunk_text: str, extracted_text: str) -> str:
+        """Create a short audit-friendly snippet anchored to extracted text."""
         text = LlamaCppBackend._clean_evidence_text(chunk_text)
         if not text:
             return ""
@@ -1185,11 +1218,13 @@ class LlamaCppBackend:
 
     @staticmethod
     def _clean_evidence_text(text: str) -> str:
+        """Remove speaker labels and collapse whitespace in transcript evidence."""
         cleaned = re.sub(r"\bSPEAKER_\d+\s*:\s*", " ", str(text or ""), flags=re.I)
         cleaned = re.sub(r"\s+", " ", cleaned).strip()
         return cleaned
 
     def _select_extraction_chunks(self, chunks: list[dict[str, Any]], summary: dict[str, Any]) -> list[dict[str, Any]]:
+        """Select the subset of chunks most likely to contain extractable items."""
         if len(chunks) <= 6:
             return chunks
         summary_text = str(summary.get("summary", "") or "")
@@ -1260,6 +1295,7 @@ class LlamaCppBackend:
 
     @staticmethod
     def _has_explicit_extraction_cue(text: str) -> bool:
+        """Detect transcript phrases that strongly imply actions or decisions."""
         lowered = (text or "").lower()
         patterns = [
             r"\bwe should\b",
@@ -1280,6 +1316,7 @@ class LlamaCppBackend:
 
     @staticmethod
     def _model_visible_chunk_text(chunk: dict[str, Any]) -> str:
+        """Return chunk text cleaned for model prompts and evidence views."""
         text = str(chunk.get("text", "") or "")
         text = re.sub(r"\bSPEAKER_\d+\s*:\s*", "", text, flags=re.I)
         text = re.sub(r"\s+", " ", text)
@@ -1287,6 +1324,7 @@ class LlamaCppBackend:
 
     @staticmethod
     def _chunk_excerpt_for_prompt(chunk: dict[str, Any], limit: int = 420) -> str:
+        """Return a prompt-safe excerpt from a transcript chunk."""
         text = LlamaCppBackend._model_visible_chunk_text(chunk)
         if len(text) <= limit:
             return text
@@ -1294,6 +1332,7 @@ class LlamaCppBackend:
 
     @staticmethod
     def _keyword_set_from_text(text: str) -> set[str]:
+        """Extract a lightweight cue-word set from summary text."""
         words = [w.lower() for w in re.findall(r"[A-Za-z][A-Za-z0-9_-]{2,}", text or "")]
         stop = {
             "speaker",
@@ -1322,6 +1361,7 @@ class LlamaCppBackend:
 
     @staticmethod
     def _score_chunk_for_extraction(text: str, cues: set[str]) -> int:
+        """Score a chunk for likely decision/action extraction value."""
         lowered = (text or "").lower()
         score = 0
         # Decision/action cue patterns.
@@ -1351,6 +1391,7 @@ class LlamaCppBackend:
 
     @staticmethod
     def _normalize_extraction_flags(flags: list[str], has_decisions: bool, has_actions: bool) -> list[str]:
+        """Remove redundant negative flags once real extractions are present."""
         out: list[str] = []
         for f in flags:
             fs = str(f).strip()

@@ -1,3 +1,5 @@
+"""Regression tests for snapshot-based reproducibility audits."""
+
 from __future__ import annotations
 
 import json
@@ -9,6 +11,7 @@ import yaml
 
 
 def _write_snapshot(root: Path, meeting_id: str, artifact_digest: str, config_digest: str) -> None:
+    """Write a minimal reproducibility snapshot for one meeting."""
     meeting_dir = root / "ami" / meeting_id
     meeting_dir.mkdir(parents=True, exist_ok=True)
     (meeting_dir / "run_manifest.json").write_text(
@@ -31,6 +34,7 @@ def _write_snapshot(root: Path, meeting_id: str, artifact_digest: str, config_di
 
 
 def _write_min_config(path: Path, artifacts_dir: Path) -> None:
+    """Write the smallest config needed to invoke the audit script."""
     cfg = {
         "paths": {
             "artifacts_dir": str(artifacts_dir),
@@ -44,6 +48,7 @@ def _write_min_config(path: Path, artifacts_dir: Path) -> None:
 
 
 def test_repro_audit_matches_against_snapshot_root(tmp_path: Path) -> None:
+    """Matching snapshots should yield a zero-mismatch audit report."""
     current_root = tmp_path / "current_artifacts"
     snap_root = tmp_path / "snapshot_artifacts"
     _write_snapshot(current_root, "ES2005a", artifact_digest="aaa", config_digest="ccc")
@@ -77,6 +82,7 @@ def test_repro_audit_matches_against_snapshot_root(tmp_path: Path) -> None:
 
 
 def test_repro_audit_detects_snapshot_mismatch(tmp_path: Path) -> None:
+    """Digest mismatches should cause the audit script to fail."""
     current_root = tmp_path / "current_artifacts"
     snap_root = tmp_path / "snapshot_artifacts"
     _write_snapshot(current_root, "ES2005a", artifact_digest="aaa", config_digest="ccc")

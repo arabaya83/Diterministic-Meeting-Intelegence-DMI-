@@ -972,12 +972,14 @@ def normalize_text(text: str) -> str:
 
 
 def _load_json_segments(path: Path) -> list[dict]:
+    """Load a list-like JSON artifact from disk."""
     import json
 
     return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _tokens_to_text(tokens: list[dict]) -> str:
+    """Reconstruct plain text from token records with punctuation markers."""
     parts: list[str] = []
     for t in tokens:
         if t["is_punc"] and parts:
@@ -988,20 +990,24 @@ def _tokens_to_text(tokens: list[dict]) -> str:
 
 
 def _word_count(text: str) -> int:
+    """Count non-empty whitespace-delimited words in a text string."""
     return len([w for w in text.split() if w])
 
 
 def _first_line_excerpt(text: str, max_len: int = 220) -> str:
+    """Return a truncated excerpt from the first line of text."""
     line = text.splitlines()[0].strip() if text else ""
     return line[:max_len]
 
 
 def _infer_owner_from_chunk(text: str) -> str | None:
+    """Infer the leading speaker label from a transcript chunk when present."""
     m = re.search(r"^(SPEAKER_\d+):", text, flags=re.M)
     return m.group(1) if m else None
 
 
 def _html_escape(s: str) -> str:
+    """Escape a small HTML subset for generated summary pages."""
     return (
         s.replace("&", "&amp;")
         .replace("<", "&lt;")
@@ -1043,6 +1049,7 @@ def _finalize_summary_narrative(summary: MinutesSummary, extraction: ExtractionO
 
 
 def _summary_contains_phrase(summary_text: str, phrase: str) -> bool:
+    """Check whether two texts share enough normalized lexical overlap."""
     summary_words = set(_normalize_for_eval(summary_text).split())
     phrase_words = set(_normalize_for_eval(phrase).split())
     if not phrase_words:
@@ -1052,6 +1059,7 @@ def _summary_contains_phrase(summary_text: str, phrase: str) -> bool:
 
 
 def _normalize_for_eval(s: str) -> str:
+    """Normalize text into the lightweight evaluation token space."""
     s = s.lower()
     s = re.sub(r"\[[^\]]+\]", " ", s)
     s = re.sub(r"speaker_\d+:", " ", s)
@@ -1061,6 +1069,7 @@ def _normalize_for_eval(s: str) -> str:
 
 
 def _wer(ref: str, hyp: str) -> float:
+    """Compute word error rate over normalized text."""
     ref_words = _normalize_for_eval(ref).split()
     hyp_words = _normalize_for_eval(hyp).split()
     if not ref_words:
@@ -1069,6 +1078,7 @@ def _wer(ref: str, hyp: str) -> float:
 
 
 def _cer(ref: str, hyp: str) -> float:
+    """Compute character error rate over normalized text."""
     ref_chars = list(_normalize_for_eval(ref).replace(" ", ""))
     hyp_chars = list(_normalize_for_eval(hyp).replace(" ", ""))
     if not ref_chars:
@@ -1094,6 +1104,7 @@ def _rouge_scores(ref: str, hyp: str) -> dict[str, float | None]:
 
 
 def _rouge_n_f1(ref_tokens: list[str], hyp_tokens: list[str], n: int) -> float:
+    """Compute ROUGE-N F1 for normalized token sequences."""
     if len(ref_tokens) < n or len(hyp_tokens) < n:
         return 0.0
     ref_counts = _ngram_counts(ref_tokens, n)
@@ -1109,6 +1120,7 @@ def _rouge_n_f1(ref_tokens: list[str], hyp_tokens: list[str], n: int) -> float:
 
 
 def _ngram_counts(tokens: list[str], n: int) -> dict[tuple[str, ...], int]:
+    """Count n-grams in a token sequence."""
     counts: dict[tuple[str, ...], int] = {}
     for i in range(len(tokens) - n + 1):
         gram = tuple(tokens[i : i + n])
@@ -1117,6 +1129,7 @@ def _ngram_counts(tokens: list[str], n: int) -> dict[tuple[str, ...], int]:
 
 
 def _rouge_l_f1(ref_tokens: list[str], hyp_tokens: list[str]) -> float:
+    """Compute ROUGE-L F1 from the longest common subsequence length."""
     if not ref_tokens or not hyp_tokens:
         return 0.0
     lcs = _lcs_len(ref_tokens, hyp_tokens)
@@ -1128,6 +1141,7 @@ def _rouge_l_f1(ref_tokens: list[str], hyp_tokens: list[str]) -> float:
 
 
 def _lcs_len(a: list[str], b: list[str]) -> int:
+    """Return the longest common subsequence length for two token lists."""
     prev = [0] * (len(b) + 1)
     for token_a in a:
         curr = [0]
@@ -1141,6 +1155,7 @@ def _lcs_len(a: list[str], b: list[str]) -> int:
 
 
 def _edit_distance(a: list[str], b: list[str]) -> int:
+    """Compute Levenshtein edit distance between two token sequences."""
     if len(a) < len(b):
         a, b = b, a
     prev = list(range(len(b) + 1))
@@ -1154,6 +1169,7 @@ def _edit_distance(a: list[str], b: list[str]) -> int:
 
 
 def _dir_digest(path: Path) -> str:
+    """Hash persisted meeting artifacts while excluding traceability sidecars."""
     h = hashlib.sha256()
     for p in sorted(path.rglob("*")):
         if p.is_dir():
@@ -1174,6 +1190,7 @@ def _dir_digest(path: Path) -> str:
 
 
 def _summarize_ingest_stage(out: dict) -> dict:
+    """Project ingest outputs into a compact stage-trace summary."""
     qc = out.get("qc_metrics", {}) if isinstance(out, dict) else {}
     return {
         "staged_wav": out.get("staged_wav"),
@@ -1184,10 +1201,12 @@ def _summarize_ingest_stage(out: dict) -> dict:
 
 
 def _summarize_vad_stage(out: dict) -> dict:
+    """Project VAD outputs into a compact stage-trace summary."""
     return {"count": out.get("count")}
 
 
 def _summarize_diar_stage(out: dict) -> dict:
+    """Project diarization outputs into a compact stage-trace summary."""
     segments = out.get("segments") if isinstance(out, dict) else None
     labels = out.get("speaker_labels") if isinstance(out, dict) else None
     if labels is None and isinstance(segments, list):
@@ -1201,6 +1220,7 @@ def _summarize_diar_stage(out: dict) -> dict:
 
 
 def _summarize_asr_stage(out: dict) -> dict:
+    """Project ASR outputs into a compact stage-trace summary."""
     segments = out.get("segments") if isinstance(out, dict) else None
     return {
         "segment_count": len(segments) if isinstance(segments, list) else None,
@@ -1208,6 +1228,7 @@ def _summarize_asr_stage(out: dict) -> dict:
 
 
 def _summarize_canonical_stage(out: dict) -> dict:
+    """Project canonicalization outputs into a compact stage-trace summary."""
     canonical = out.get("canonical", {}) if isinstance(out, dict) else {}
     metadata = canonical.get("metadata", {}) if isinstance(canonical, dict) else {}
     return {
@@ -1222,10 +1243,12 @@ def _summarize_canonical_stage(out: dict) -> dict:
 
 
 def _summarize_chunk_stage(out: dict) -> dict:
+    """Project chunking outputs into a compact stage-trace summary."""
     return {"count": out.get("count")}
 
 
 def _summarize_summary_stage(out: dict) -> dict:
+    """Project summarization outputs into a compact stage-trace summary."""
     if not isinstance(out, dict):
         return {}
     return {
@@ -1238,6 +1261,7 @@ def _summarize_summary_stage(out: dict) -> dict:
 
 
 def _summarize_extract_stage(out: dict) -> dict:
+    """Project extraction outputs into a compact stage-trace summary."""
     if not isinstance(out, dict):
         return {}
     return {
@@ -1249,6 +1273,7 @@ def _summarize_extract_stage(out: dict) -> dict:
 
 
 def _summarize_eval_stage(out: dict) -> dict:
+    """Project evaluation outputs into a compact stage-trace summary."""
     if not isinstance(out, dict):
         return {}
     mom = out.get("mom_quality_checks", {}) or {}
@@ -1266,6 +1291,7 @@ def _summarize_eval_stage(out: dict) -> dict:
 
 
 def _mlflow_log_pipeline_result(mlflow, cfg: AppConfig, manifest: dict, eval_out: dict) -> None:
+    """Best-effort logging of meeting-level metrics to local MLflow."""
     try:
         mlflow.log_param("config_digest", manifest.get("config_digest"))
         mlflow.log_param("artifact_digest", manifest.get("artifact_digest"))

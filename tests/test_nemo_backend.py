@@ -1,3 +1,5 @@
+"""Regression tests for offline NeMo backend guardrails."""
+
 from pathlib import Path
 
 import pytest
@@ -7,6 +9,7 @@ from ami_mom_pipeline.config import AppConfig
 
 
 def test_nemo_backend_rejects_url_model_path():
+    """URL-based model paths should be rejected in offline mode."""
     cfg = AppConfig.load(None)
     cfg.pipeline.speech_backend.mode = "nemo"
     cfg.pipeline.speech_backend.nemo.vad_model_path = "https://example.com/model.nemo"
@@ -16,6 +19,7 @@ def test_nemo_backend_rejects_url_model_path():
 
 
 def test_nemo_backend_requires_command_or_precomputed(tmp_path: Path):
+    """The backend should fail when neither commands nor cached outputs exist."""
     cfg = AppConfig.load(None)
     cfg.pipeline.speech_backend.mode = "nemo"
     cfg.pipeline.speech_backend.nemo.vad_model_path = str(tmp_path / "models" / "vad")

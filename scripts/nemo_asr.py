@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Normalize NeMo ASR outputs into stable repository transcript artifacts."""
+
 from __future__ import annotations
 
 import argparse
@@ -14,6 +16,7 @@ from nemo_contract import ensure_dir, write_json, write_text
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse CLI arguments for the ASR wrapper."""
     p = argparse.ArgumentParser(description="NeMo ASR wrapper for AMI pipeline artifact contract")
     p.add_argument("--audio", required=True)
     p.add_argument("--model", required=False, help="Local NeMo ASR model path (.nemo preferred)")
@@ -46,6 +49,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    """Run the selected ASR path and materialize transcript artifacts."""
     args = parse_args()
     out_dir = ensure_dir(Path(args.out_dir))
     asr_json = out_dir / "asr_segments.json"
@@ -78,6 +82,7 @@ def main() -> int:
 
 
 def finalize_outputs(segs: list[dict], asr_json: Path, txt_path: Path) -> None:
+    """Write normalized ASR JSON and transcript text artifacts."""
     for s in segs:
         s.setdefault("source", "nemo_asr")
         s.setdefault("confidence", 0.0)
@@ -97,6 +102,7 @@ def run_nemo_asr_api(
     split_max_duration_sec: float = 25.0,
     min_segment_duration_sec: float = 0.15,
 ) -> list[dict]:
+    """Run a local NeMo ASR model and return normalized segment rows."""
     if model_path is None:
         raise ValueError("--model is required with --try-nemo-api")
     if not model_path.exists():
@@ -316,6 +322,7 @@ def enable_confidence_preservation(model) -> None:
 
 
 def transcribe_single_hyp(model, wav_path: Path, batch_size: int = 1) -> dict:
+    """Transcribe one waveform and return normalized text/confidence fields."""
     out = _call_transcribe_compat(model, [wav_path], batch_size=batch_size)
     normalized = normalize_transcribe_outputs(out)
     if normalized:
@@ -324,11 +331,13 @@ def transcribe_single_hyp(model, wav_path: Path, batch_size: int = 1) -> dict:
 
 
 def transcribe_many_hyps(model, wav_paths: list[Path], batch_size: int = 8) -> list[dict]:
+    """Transcribe multiple waveform chunks and normalize all outputs."""
     out = _call_transcribe_compat(model, wav_paths, batch_size=batch_size)
     return normalize_transcribe_outputs(out)
 
 
 def _call_transcribe_compat(model, wav_paths: list[Path], batch_size: int = 1):
+    """Call ``model.transcribe`` across NeMo API variants."""
     disable_cuda_graph_decoder(model)
     path_list = [str(p) for p in wav_paths]
     try:
@@ -366,12 +375,14 @@ def _call_transcribe_compat(model, wav_paths: list[Path], batch_size: int = 1):
 
 
 def normalize_transcribe_outputs(out) -> list[dict]:
+    """Normalize NeMo transcribe outputs into text/confidence dictionaries."""
     if isinstance(out, (list, tuple)):
         return [_normalize_transcribe_item(item) for item in out]
     return [_normalize_transcribe_item(out)]
 
 
 def _normalize_transcribe_item(item) -> dict:
+    """Normalize one NeMo hypothesis object or dictionary."""
     if isinstance(item, str):
         return {"text": item.strip(), "confidence": 0.0}
 
@@ -381,6 +392,7 @@ def _normalize_transcribe_item(item) -> dict:
 
 
 def _extract_text(item) -> str:
+    """Extract transcript text from a NeMo hypothesis-like object."""
     # NeMo hypothesis objects commonly expose `.text`; dict-like outputs may use "text".
     text = getattr(item, "text", None)
     if isinstance(text, str):
@@ -393,6 +405,7 @@ def _extract_text(item) -> str:
 
 
 def _extract_confidence(item) -> float:
+    """Extract a bounded confidence score from NeMo hypothesis metadata."""
     # Try common NeMo fields in order of preference.
     candidates = []
     if isinstance(item, dict):
@@ -449,6 +462,7 @@ def _extract_confidence(item) -> float:
 
 
 def _as_float(v):
+    """Best-effort float conversion used during confidence extraction."""
     try:
         return float(v)
     except Exception:
@@ -456,6 +470,7 @@ def _as_float(v):
 
 
 def _as_confidence_if_bounded(v) -> float | None:
+    """Return a value only when it looks like a valid confidence score."""
     f = _as_float(v)
     if f is None or not math.isfinite(f):
         return None
@@ -465,6 +480,7 @@ def _as_confidence_if_bounded(v) -> float | None:
 
 
 def _mean_bounded(vals) -> float | None:
+    """Average bounded confidence values, ignoring invalid entries."""
     if not isinstance(vals, (list, tuple)) or not vals:
         return None
     xs = []
@@ -485,11 +501,13 @@ def _mean_bounded(vals) -> float | None:
 
 
 def batched(items: list[dict], batch_size: int):
+    """Yield consecutive batches from a list without reordering it."""
     for i in range(0, len(items), batch_size):
         yield items[i : i + batch_size]
 
 
 def load_diar_segments(path: Path) -> list[dict]:
+    """Load and sort valid diarization segments from JSON."""
     segs = json.loads(path.read_text(encoding="utf-8"))
     valid = [s for s in segs if float(s["end"]) > float(s["start"])]
     valid.sort(key=lambda s: (float(s["start"]), float(s["end"])))
@@ -503,6 +521,7 @@ def optimize_diar_segments(
     split_max_duration_sec: float = 25.0,
     min_segment_duration_sec: float = 0.15,
 ) -> list[dict]:
+    """Merge, split, and prune diarization segments before ASR chunking."""
     merged = merge_adjacent_same_speaker(segs, merge_gap_sec=merge_gap_sec, merge_max_duration_sec=merge_max_duration_sec)
     split = split_long_segments(merged, max_duration_sec=split_max_duration_sec)
     out = []
@@ -523,6 +542,7 @@ def optimize_diar_segments(
 def merge_adjacent_same_speaker(
     segs: list[dict], merge_gap_sec: float = 0.2, merge_max_duration_sec: float = 18.0
 ) -> list[dict]:
+    """Merge adjacent same-speaker segments subject to gap and duration limits."""
     if not segs:
         return []
     out: list[dict] = []
@@ -548,6 +568,7 @@ def merge_adjacent_same_speaker(
 
 
 def split_long_segments(segs: list[dict], max_duration_sec: float = 25.0) -> list[dict]:
+    """Split long diarization segments into smaller ASR chunks."""
     if max_duration_sec <= 0:
         return segs
     out: list[dict] = []
@@ -567,11 +588,13 @@ def split_long_segments(segs: list[dict], max_duration_sec: float = 25.0) -> lis
 
 
 def wav_duration(path: Path) -> float:
+    """Return WAV duration in seconds using the standard library reader."""
     with wave.open(str(path), "rb") as wf:
         return wf.getnframes() / float(wf.getframerate())
 
 
 def extract_wav_chunk(src: Path, dst: Path, start: float, end: float) -> None:
+    """Extract a WAV subsegment into a temporary chunk file."""
     start = max(0.0, float(start))
     end = max(start, float(end))
     with wave.open(str(src), "rb") as r:

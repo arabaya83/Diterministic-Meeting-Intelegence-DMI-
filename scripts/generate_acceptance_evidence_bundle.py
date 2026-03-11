@@ -1,4 +1,10 @@
 #!/usr/bin/env python3
+"""Assemble a portable acceptance-evidence bundle from local artifacts.
+
+The script copies selected documentation, meeting artifacts, and optional batch
+run summaries into a fresh output directory for review or handoff purposes.
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -32,6 +38,7 @@ DOC_FILES = [
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build the CLI parser for evidence-bundle generation."""
     p = argparse.ArgumentParser(description="Generate an acceptance evidence bundle for AMI pipeline runs")
     p.add_argument("--meeting-id", action="append", dest="meeting_ids", default=None, help="Meeting ID (repeatable)")
     p.add_argument("--bundle-name", default=None, help="Optional fixed bundle folder name")
@@ -42,6 +49,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    """Copy the requested artifacts into a newly created bundle directory."""
     args = build_parser().parse_args()
     meeting_ids = list(dict.fromkeys(args.meeting_ids or ["ES2005a"]))
 
@@ -109,10 +117,12 @@ def main() -> int:
 
 
 def _resolve(p: Path) -> Path:
+    """Expand and resolve an output path used during bundle creation."""
     return p.expanduser().resolve()
 
 
 def _copy_rel(rel: str, dst: Path, copied: list[str], missing: list[str]) -> None:
+    """Copy one repository-relative file into the bundle when present."""
     src = ROOT / rel
     if not src.exists():
         missing.append(rel)

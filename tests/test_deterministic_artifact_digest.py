@@ -1,3 +1,5 @@
+"""Regression test for stable artifact digests across repeated runs."""
+
 from __future__ import annotations
 
 import json
@@ -10,6 +12,7 @@ from ami_mom_pipeline.pipeline import run_pipeline
 
 
 def test_mock_pipeline_artifact_digest_stable_across_repeated_runs(tmp_path: Path) -> None:
+    """Repeated runs with identical inputs should produce the same digest."""
     raw_audio = Path("data/rawa/ami/audio/ES2005a.Mix-Headset.wav")
     annotations = Path("data/rawa/ami/annotations")
     if not raw_audio.exists() or not annotations.exists():

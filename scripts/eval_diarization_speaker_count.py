@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+"""Evaluate predicted speaker counts against AMI reference metadata.
+
+The script compares unique diarization speakers from generated artifacts with
+the participant count declared in AMI's `meetings.xml`, then writes offline
+CSV and JSON summaries.
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -20,6 +27,7 @@ from ami_mom_pipeline.pipeline import list_meetings  # noqa: E402
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build the CLI parser for speaker-count evaluation."""
     p = argparse.ArgumentParser(
         description="Evaluate NeMo diarization speaker-count quality against AMI reference participant count"
     )
@@ -53,6 +61,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    """Run the selected speaker-count evaluation and write reports."""
     args = build_parser().parse_args()
     cfg_path = Path(args.config)
     if not cfg_path.exists():
@@ -102,6 +111,7 @@ def select_meetings(
     limit: int | None,
     discover: str,
 ) -> list[str]:
+    """Select meetings from explicit ids or deterministic discovery rules."""
     if explicit:
         meetings = list(dict.fromkeys(explicit))
     elif discover == "raw":
@@ -121,12 +131,14 @@ def select_meetings(
 
 
 def localname(tag: str) -> str:
+    """Strip a namespace prefix from an XML tag when present."""
     if "}" in tag:
         return tag.rsplit("}", 1)[1]
     return tag
 
 
 def load_ami_meeting_reference(annotations_dir: Path) -> dict[str, dict[str, Any]]:
+    """Load AMI participant metadata keyed by meeting id."""
     meetings_xml = annotations_dir / "corpusResources" / "meetings.xml"
     index: dict[str, dict[str, Any]] = {}
     if not meetings_xml.exists():
@@ -170,6 +182,7 @@ def load_ami_meeting_reference(annotations_dir: Path) -> dict[str, dict[str, Any
 
 
 def evaluate_meeting(cfg: AppConfig, meeting_id: str, reference_index: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    """Compare predicted and reference speaker counts for one meeting."""
     artifact_dir = Path(cfg.paths.artifacts_dir) / "ami" / meeting_id
     diar_json = artifact_dir / "diarization_segments.json"
     pred_count: int | None = None
@@ -250,6 +263,7 @@ def evaluate_meeting(cfg: AppConfig, meeting_id: str, reference_index: dict[str,
 
 
 def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
+    """Write per-meeting speaker-count comparisons to CSV."""
     path.parent.mkdir(parents=True, exist_ok=True)
     fieldnames = [
         "meeting_id",
@@ -276,6 +290,7 @@ def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
 
 
 def summarize(rows: list[dict[str, Any]], cfg_path: Path, out_csv: Path) -> dict[str, Any]:
+    """Build the aggregate JSON report for speaker-count evaluation."""
     exact = sum(1 for r in rows if r["status"] == "exact")
     over = sum(1 for r in rows if r["status"] == "over_clustered")
     under = sum(1 for r in rows if r["status"] == "under_clustered")

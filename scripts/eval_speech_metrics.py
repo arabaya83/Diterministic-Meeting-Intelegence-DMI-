@@ -1,4 +1,12 @@
 #!/usr/bin/env python3
+"""Evaluate speech metrics from persisted AMI pipeline artifacts.
+
+The script compares AMI reference annotations with generated ASR and
+diarization artifacts, then writes offline CSV and JSON summaries. It reads
+existing artifacts only and does not alter pipeline outputs beyond those
+reports.
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -28,6 +36,7 @@ from ami_mom_pipeline.utils.speech_eval import (  # noqa: E402
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build the CLI parser for speech-metric evaluation."""
     p = argparse.ArgumentParser(description="Evaluate AMI speech metrics: DER, cpWER, WER")
     p.add_argument("--config", default="configs/pipeline.nemo.yaml")
     p.add_argument("--prefix", default=None)
@@ -50,6 +59,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    """Run the selected speech evaluation workflow and write reports."""
     args = build_parser().parse_args()
     cfg_path = Path(args.config)
     if not cfg_path.exists():
@@ -98,6 +108,7 @@ def select_meetings(
     limit: int | None,
     discover: str,
 ) -> list[str]:
+    """Select meetings from explicit ids or deterministic discovery rules."""
     if explicit:
         meetings = list(dict.fromkeys(explicit))
     elif discover == "raw":
@@ -117,6 +128,7 @@ def select_meetings(
 
 
 def evaluate_meeting(cfg: AppConfig, meeting_id: str, collar_sec: float, skip_overlap: bool) -> dict[str, Any]:
+    """Compute speech metrics for one meeting while tolerating partial failures."""
     annotations_dir = Path(cfg.paths.annotations_dir)
     artifacts_dir = Path(cfg.paths.artifacts_dir)
     errors: list[str] = []
@@ -202,6 +214,7 @@ def evaluate_meeting(cfg: AppConfig, meeting_id: str, collar_sec: float, skip_ov
 
 
 def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
+    """Write per-meeting speech metrics using the repository CSV schema."""
     path.parent.mkdir(parents=True, exist_ok=True)
     fieldnames = [
         "meeting_id",
@@ -239,6 +252,7 @@ def summarize(
     collar_sec: float,
     skip_overlap: bool,
 ) -> dict[str, Any]:
+    """Build the aggregate JSON summary accompanying the CSV report."""
     wers = [float(r["wer"]) for r in rows if r.get("wer") is not None]
     cpwers = [float(r["cpwer"]) for r in rows if r.get("cpwer") is not None]
     ders = [float(r["der"]) for r in rows if r.get("der") is not None]
@@ -266,6 +280,7 @@ def summarize(
 
 
 def fmt(x: float | None) -> str:
+    """Format a floating-point metric for console output."""
     return "n/a" if x is None else f"{x:.4f}"
 
 

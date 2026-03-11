@@ -1,3 +1,5 @@
+"""Shared fixtures and lightweight ASGI client for backend API tests."""
+
 from __future__ import annotations
 
 import json
@@ -14,6 +16,7 @@ from app.main import app
 
 @pytest.fixture()
 def synthetic_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Create a synthetic repository tree populated with representative artifacts."""
     (tmp_path / "artifacts/ami/TEST100a").mkdir(parents=True)
     (tmp_path / "artifacts/eval/ami").mkdir(parents=True)
     (tmp_path / "artifacts/mlruns/1/run1").mkdir(parents=True)
@@ -77,20 +80,27 @@ def synthetic_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 @pytest.fixture()
 def client(synthetic_root: Path):
+    """Return a minimal synchronous client for exercising the ASGI app."""
     get_settings.cache_clear()
     get_security.cache_clear()
     get_indexer.cache_clear()
     get_runner.cache_clear()
 
     class ASGIClient:
+        """Tiny in-process ASGI client tailored to the backend test suite."""
+
         def get(self, path: str):
+            """Issue a GET request against the ASGI app."""
             return self.request("GET", path)
 
         def post(self, path: str, json_body: dict | None = None):
+            """Issue a POST request against the ASGI app."""
             return self.request("POST", path, json_body=json_body)
 
         def request(self, method: str, path: str, json_body: dict | None = None):
+            """Run one HTTP request through the ASGI application synchronously."""
             async def run_request():
+                """Execute the ASGI exchange and capture emitted messages."""
                 messages = []
                 request_sent = False
                 body_bytes = json.dumps(json_body).encode("utf-8") if json_body is not None else b""
@@ -111,6 +121,7 @@ def client(synthetic_root: Path):
                 }
 
                 async def receive():
+                    """Provide the request body to the application once."""
                     nonlocal request_sent
                     if request_sent:
                         return {"type": "http.disconnect"}
@@ -118,6 +129,7 @@ def client(synthetic_root: Path):
                     return {"type": "http.request", "body": body_bytes, "more_body": False}
 
                 async def send(message):
+                    """Collect ASGI response messages for later inspection."""
                     messages.append(message)
 
                 await app(scope, receive, send)
@@ -136,11 +148,15 @@ def client(synthetic_root: Path):
 
 
 class SimpleResponse:
+    """Simple response wrapper returned by the lightweight ASGI client."""
+
     def __init__(self, status_code: int, headers: dict[str, str], body: bytes) -> None:
+        """Store response metadata and decode a text view of the body."""
         self.status_code = status_code
         self.headers = headers
         self.content = body
         self.text = body.decode("utf-8", errors="replace")
 
     def json(self):
+        """Parse the response body as JSON."""
         return json.loads(self.text)

@@ -1,3 +1,5 @@
+"""Regression tests for backend path security and filesystem services."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -11,6 +13,7 @@ from app.services.security import PathSecurity
 
 
 def test_path_traversal_blocked(synthetic_root: Path):
+    """Relative-path validation should reject traversal attempts."""
     settings = get_settings()
     security = PathSecurity(settings)
     with pytest.raises(Exception):
@@ -20,6 +23,7 @@ def test_path_traversal_blocked(synthetic_root: Path):
 
 
 def test_meeting_listing_from_raw_audio_directory(synthetic_root: Path):
+    """Meeting discovery should pick up synthetic raw-audio inputs."""
     settings = get_settings()
     indexer = FilesystemIndexer(settings, PathSecurity(settings))
     meetings = indexer.list_meetings()
@@ -29,6 +33,7 @@ def test_meeting_listing_from_raw_audio_directory(synthetic_root: Path):
 
 
 def test_artifact_listing_and_reading(synthetic_root: Path):
+    """Artifact listing should expose expected synthetic meeting artifacts."""
     settings = get_settings()
     indexer = FilesystemIndexer(settings, PathSecurity(settings))
     artifacts = indexer.list_artifacts("TEST100a")
@@ -39,6 +44,7 @@ def test_artifact_listing_and_reading(synthetic_root: Path):
 
 
 def test_jsonl_parsing_on_sample_chunk_file(synthetic_root: Path):
+    """JSONL artifact reading should preserve the stored chunk id."""
     path = synthetic_root / "artifacts/ami/TEST100a/transcript_chunks.jsonl"
     rows = read_jsonl(path)
     assert rows[0]["chunk_id"] == "TEST100a_chunk_0001"

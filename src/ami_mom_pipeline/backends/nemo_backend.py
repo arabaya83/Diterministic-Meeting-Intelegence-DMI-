@@ -52,6 +52,7 @@ class NemoSpeechBackend:
     """
 
     def __init__(self, cfg: AppConfig):
+        """Store config references used by all NeMo speech-stage commands."""
         self.cfg = cfg
         self.nemo_cfg = cfg.pipeline.speech_backend.nemo
 

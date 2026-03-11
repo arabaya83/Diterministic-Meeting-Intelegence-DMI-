@@ -1,3 +1,11 @@
+"""Speech-evaluation helpers for persisted AMI artifacts.
+
+This module reads reference AMI annotations and pipeline-generated speech
+artifacts, then computes lightweight deterministic metrics such as WER, cpWER,
+and an approximate no-overlap DER. The logic is intentionally local and
+dependency-light so evaluation can run offline.
+"""
+
 from __future__ import annotations
 
 import itertools
@@ -11,11 +19,14 @@ from .ami_annotations import build_utterances, load_word_tokens, reference_plain
 
 @dataclass
 class WordErrorCounts:
+    """Edit-count summary used to derive WER-like metrics."""
+
     edits: int
     ref_len: int
 
 
 def normalize_for_eval(text: str) -> str:
+    """Normalize transcript text into a token space suitable for scoring."""
     import re
 
     s = text.lower()
@@ -27,6 +38,7 @@ def normalize_for_eval(text: str) -> str:
 
 
 def edit_distance(a: list[str], b: list[str]) -> int:
+    """Compute Levenshtein edit distance between two token sequences."""
     if len(a) < len(b):
         a, b = b, a
     prev = list(range(len(b) + 1))
@@ -40,6 +52,7 @@ def edit_distance(a: list[str], b: list[str]) -> int:
 
 
 def word_error_counts(ref_text: str, hyp_text: str) -> WordErrorCounts:
+    """Return raw word-level edit counts for two transcript strings."""
     ref_words = normalize_for_eval(ref_text).split()
     hyp_words = normalize_for_eval(hyp_text).split()
     if not ref_words:
@@ -48,6 +61,7 @@ def word_error_counts(ref_text: str, hyp_text: str) -> WordErrorCounts:
 
 
 def wer_from_texts(ref_text: str, hyp_text: str) -> float | None:
+    """Compute WER for two transcript strings when a reference exists."""
     counts = word_error_counts(ref_text, hyp_text)
     if counts.ref_len == 0:
         return None
@@ -55,6 +69,7 @@ def wer_from_texts(ref_text: str, hyp_text: str) -> float | None:
 
 
 def load_reference_asr_views(annotations_dir: Path, meeting_id: str) -> dict[str, Any]:
+    """Load AMI reference tokens and aggregate them into speaker/text views."""
     tokens = load_word_tokens(annotations_dir, meeting_id)
     by_speaker: dict[str, list[dict[str, Any]]] = {}
     for t in tokens:
@@ -72,6 +87,7 @@ def load_reference_asr_views(annotations_dir: Path, meeting_id: str) -> dict[str
 
 
 def load_hyp_asr_views(artifacts_dir: Path, meeting_id: str) -> dict[str, Any]:
+    """Load pipeline ASR artifacts and aggregate them for scoring."""
     asr_path = artifacts_dir / "ami" / meeting_id / "asr_segments.json"
     if not asr_path.exists():
         return {"exists": False, "segments": [], "full_text": "", "speaker_texts": {}, "speaker_count": 0}
@@ -101,6 +117,7 @@ def load_hyp_asr_views(artifacts_dir: Path, meeting_id: str) -> dict[str, Any]:
 
 
 def compute_cpwer(ref_speaker_texts: dict[str, str], hyp_speaker_texts: dict[str, str]) -> dict[str, Any]:
+    """Compute cpWER via brute-force speaker assignment for small meetings."""
     ref_items = sorted(ref_speaker_texts.items(), key=lambda kv: kv[0])
     hyp_items = sorted(hyp_speaker_texts.items(), key=lambda kv: kv[0])
     ref_labels = [k for k, _ in ref_items]
@@ -162,6 +179,7 @@ def compute_cpwer(ref_speaker_texts: dict[str, str], hyp_speaker_texts: dict[str
 
 
 def load_ref_diarization_from_words(annotations_dir: Path, meeting_id: str) -> list[dict[str, Any]]:
+    """Build reference diarization segments from AMI word annotations."""
     tokens = load_word_tokens(annotations_dir, meeting_id)
     utts = build_utterances(tokens)
     return [
@@ -177,6 +195,7 @@ def load_ref_diarization_from_words(annotations_dir: Path, meeting_id: str) -> l
 
 
 def load_hyp_diarization(artifacts_dir: Path, meeting_id: str) -> list[dict[str, Any]]:
+    """Load diarization segments emitted by the pipeline for one meeting."""
     diar_path = artifacts_dir / "ami" / meeting_id / "diarization_segments.json"
     if not diar_path.exists():
         return []
@@ -204,6 +223,7 @@ def compute_der_approx_nooverlap(
     collar_sec: float = 0.25,
     skip_overlap: bool = True,
 ) -> dict[str, Any]:
+    """Compute a deterministic approximate DER over single-label intervals."""
     if collar_sec < 0:
         raise ValueError("collar_sec must be >= 0")
 
@@ -295,6 +315,7 @@ def compute_der_approx_nooverlap(
 
 
 def _apply_collar(segments: list[dict[str, Any]], collar_sec: float) -> list[dict[str, Any]]:
+    """Trim segment boundaries by the requested collar before DER scoring."""
     out: list[dict[str, Any]] = []
     for s in segments:
         start = float(s["start"]) + collar_sec
@@ -310,6 +331,7 @@ def _atomize(
     ref_segments: list[dict[str, Any]],
     hyp_segments: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
+    """Split the timeline into atomic intervals spanning all boundaries."""
     atoms: list[dict[str, Any]] = []
     for a, b in zip(boundaries, boundaries[1:]):
         if b <= a:
@@ -330,6 +352,7 @@ def _atomize(
 
 
 def _best_hyp_to_ref_mapping(atoms: list[dict[str, Any]]) -> dict[str, str]:
+    """Find the best speaker mapping for the approximate DER computation."""
     overlap: dict[tuple[str, str], float] = {}
     hyp_labels: set[str] = set()
     ref_labels: set[str] = set()
@@ -392,4 +415,3 @@ def _best_hyp_to_ref_mapping(atoms: list[dict[str, Any]]) -> dict[str, str]:
             continue
         out[h] = r
     return out
-

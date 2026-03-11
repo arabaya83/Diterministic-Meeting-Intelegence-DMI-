@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Normalize VAD outputs into the repository's offline artifact contract."""
+
 from __future__ import annotations
 
 import argparse
@@ -11,6 +13,7 @@ from nemo_contract import ensure_dir, vad_json_from_rttm, write_json, write_vad_
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse CLI arguments for the VAD wrapper entrypoint."""
     p = argparse.ArgumentParser(description="NeMo VAD wrapper for AMI pipeline artifact contract")
     p.add_argument("--audio", required=True)
     p.add_argument("--model", required=False, help="Local NeMo VAD model path (.nemo or directory)")
@@ -31,6 +34,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    """Materialize VAD artifacts from one supported offline source."""
     args = parse_args()
     out_dir = ensure_dir(Path(args.out_dir))
     vad_json = out_dir / "vad_segments.json"
@@ -51,6 +55,7 @@ def main() -> int:
         return 0
 
     if args.delegate_cmd:
+        # External execution is delegated; this wrapper only verifies outputs.
         proc = subprocess.run(args.delegate_cmd, shell=True)
         if proc.returncode != 0:
             return proc.returncode
@@ -75,4 +80,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

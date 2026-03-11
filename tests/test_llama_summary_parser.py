@@ -1,3 +1,5 @@
+"""Regression tests for Llama summary JSON parsing and recovery."""
+
 from __future__ import annotations
 
 import json
@@ -6,6 +8,7 @@ from ami_mom_pipeline.backends.llama_cpp_backend import LlamaCppBackend
 
 
 def test_parse_summary_json_recovers_from_repeated_json_blocks() -> None:
+    """The parser should recover a valid object from repeated JSON blocks."""
     noisy = (
         '{\n'
         '  "summary": "The team discussed evaluation and decided to launch the product.",\n'
@@ -25,6 +28,7 @@ def test_parse_summary_json_recovers_from_repeated_json_blocks() -> None:
 
 
 def test_parse_summary_json_recovers_nested_json_in_summary_field() -> None:
+    """Nested JSON encoded inside the summary field should be unwrapped."""
     nested = {
         "summary": (
             '{"summary":"Clean summary text.","key_points":["Point A","Point B"]} '
@@ -39,6 +43,7 @@ def test_parse_summary_json_recovers_nested_json_in_summary_field() -> None:
 
 
 def test_parse_summary_json_preserves_reference_style_sections() -> None:
+    """AMI-style section buckets should survive parser normalization."""
     payload = {
         "summary": "Fallback summary text.",
         "abstract": ["The team reviewed the interface design.", "They compared cost options."],

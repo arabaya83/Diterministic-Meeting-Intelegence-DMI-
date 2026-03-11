@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+"""Validate offline NeMo asset paths declared in a pipeline config.
+
+This script is a quick preflight check for local development and CI. It does
+not download or modify anything; it only reports whether the configured NeMo
+model and diarizer paths exist on disk.
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -14,6 +21,7 @@ from ami_mom_pipeline.config import AppConfig  # noqa: E402
 
 
 def main() -> int:
+    """Run the path validation check and print a human-readable report."""
     p = argparse.ArgumentParser(description="Validate local NeMo model/config paths for offline pipeline runs")
     p.add_argument("--config", default="configs/pipeline.nemo.yaml")
     args = p.parse_args()
@@ -74,4 +82,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

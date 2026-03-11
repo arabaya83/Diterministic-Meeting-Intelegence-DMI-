@@ -1,3 +1,10 @@
+"""Determinism helpers for offline pipeline execution.
+
+The pipeline relies on these helpers to apply stable seeds and best-effort
+library settings before any model-backed stage runs. The functions return a
+report rather than raising so callers can decide how strict to be.
+"""
+
 from __future__ import annotations
 
 import os
@@ -7,11 +14,27 @@ from typing import Any
 
 
 def set_seed(seed: int) -> None:
+    """Apply the repository-wide Python seed settings.
+
+    Args:
+        seed: Integer seed propagated to Python's random module and hash seed.
+    """
     random.seed(seed)
     os.environ["PYTHONHASHSEED"] = str(seed)
 
 
 def configure_determinism(seed: int, strict: bool = True) -> dict[str, Any]:
+    """Apply best-effort deterministic settings and report what happened.
+
+    Args:
+        seed: Seed used across supported libraries.
+        strict: Whether to request strict deterministic algorithms when a
+            backend exposes that control.
+
+    Returns:
+        Dictionary describing applied settings, detected libraries, and any
+        residual determinism risks.
+    """
     report: dict[str, Any] = {
         "seed": seed,
         "strict_requested": bool(strict),

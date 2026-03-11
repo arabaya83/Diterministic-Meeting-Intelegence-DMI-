@@ -1,3 +1,5 @@
+"""Regression tests for batch artifact validation and traceability checks."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -8,6 +10,7 @@ from ami_mom_pipeline.config import AppConfig
 
 
 def _load_batch_runner_module():
+    """Import the batch runner script as a module for direct helper testing."""
     root = Path(__file__).resolve().parents[1]
     path = root / "scripts" / "run_nemo_batch_sequential.py"
     spec = importlib.util.spec_from_file_location("run_nemo_batch_sequential", path)
@@ -18,6 +21,7 @@ def _load_batch_runner_module():
 
 
 def test_validate_meeting_accepts_traceability_artifacts(tmp_path: Path) -> None:
+    """Validation should pass when all required traceability artifacts exist."""
     mod = _load_batch_runner_module()
     cfg = AppConfig()
     cfg.paths.artifacts_dir = str(tmp_path / "artifacts")
@@ -53,6 +57,7 @@ def test_validate_meeting_accepts_traceability_artifacts(tmp_path: Path) -> None
 
 
 def test_validate_meeting_flags_missing_traceability_artifacts(tmp_path: Path) -> None:
+    """Validation should fail when traceability artifacts are missing."""
     mod = _load_batch_runner_module()
     cfg = AppConfig()
     cfg.paths.artifacts_dir = str(tmp_path / "artifacts")

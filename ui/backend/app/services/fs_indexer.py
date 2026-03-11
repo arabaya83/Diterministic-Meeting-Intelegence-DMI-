@@ -38,6 +38,8 @@ PIPELINE_STAGES: list[dict[str, Any]] = [
 
 @dataclass(frozen=True)
 class ArtifactSpec:
+    """Named artifact resolver descriptor retained for UI artifact mapping."""
+
     name: str
     resolver: str
 
@@ -46,16 +48,19 @@ class FilesystemIndexer:
     """Read pipeline artifacts and project them into UI-friendly structures."""
 
     def __init__(self, settings: Settings, security: PathSecurity) -> None:
+        """Store backend settings and the path-security policy."""
         self.settings = settings
         self.security = security
 
     def list_meetings(self) -> list[MeetingListItem]:
+        """Return sorted meeting summaries discovered from disk."""
         meeting_ids = self._discover_meeting_ids()
         meetings = [self.build_meeting_summary(meeting_id) for meeting_id in meeting_ids]
         meetings.sort(key=lambda row: (row.last_updated or datetime.min.replace(tzinfo=timezone.utc), row.meeting_id), reverse=True)
         return meetings
 
     def build_meeting_summary(self, meeting_id: str) -> MeetingListItem:
+        """Assemble the summary row shown for a single meeting."""
         meeting_dir = self.settings.artifacts_dir / meeting_id
         run_manifest = self._read_json_if_exists(meeting_dir / "run_manifest.json")
         repro = self._read_json_if_exists(meeting_dir / "reproducibility_report.json")
@@ -83,6 +88,7 @@ class FilesystemIndexer:
         )
 
     def compute_stage_status(self, meeting_id: str) -> list[StageStatus]:
+        """Infer per-stage status from artifacts and stage-trace events."""
         trace_data = self._read_stage_trace(meeting_id)
         results: list[StageStatus] = []
         for definition in PIPELINE_STAGES:
@@ -130,6 +136,7 @@ class FilesystemIndexer:
         return results
 
     def list_artifacts(self, meeting_id: str) -> list[ArtifactEntry]:
+        """Return the canonical artifact list exposed by the UI."""
         artifact_names = [
             "raw_audio",
             "staged_audio",
@@ -156,6 +163,7 @@ class FilesystemIndexer:
         return [self.describe_artifact(meeting_id, name) for name in artifact_names]
 
     def describe_artifact(self, meeting_id: str, artifact_name: str) -> ArtifactEntry:
+        """Build a single artifact descriptor for preview and download routes."""
         path = self.resolve_artifact_path(meeting_id, artifact_name)
         kind = infer_kind(path)
         relative = self.security.to_project_relative(path) if path.exists() else self._relative_fallback(path)
@@ -171,6 +179,7 @@ class FilesystemIndexer:
         )
 
     def resolve_artifact_path(self, meeting_id: str, artifact_name: str) -> Path:
+        """Map a UI artifact name to its backing filesystem path."""
         self.security.validate_relative_input(meeting_id)
         self.security.validate_relative_input(artifact_name)
         meeting_dir = self.settings.artifacts_dir / meeting_id
@@ -234,6 +243,7 @@ class FilesystemIndexer:
         return {"metrics": metrics or {}, "quality_checks": quality}
 
     def get_meeting_speech(self, meeting_id: str) -> dict[str, Any]:
+        """Return audio plus speech-stage artifacts for a meeting detail page."""
         audio_artifact = self.describe_artifact(
             meeting_id,
             "staged_audio" if self.resolve_artifact_path(meeting_id, "staged_audio").exists() else "raw_audio",
@@ -250,6 +260,7 @@ class FilesystemIndexer:
         }
 
     def get_meeting_transcript(self, meeting_id: str) -> dict[str, Any]:
+        """Return transcript-related artifacts for a meeting."""
         return {
             "meeting_id": meeting_id,
             "raw": self._read_list_if_exists(self.settings.artifacts_dir / meeting_id / "transcript_raw.json"),
@@ -258,6 +269,7 @@ class FilesystemIndexer:
         }
 
     def get_meeting_summary(self, meeting_id: str) -> dict[str, Any]:
+        """Return summary JSON and optional HTML metadata for a meeting."""
         html_artifact = self.describe_artifact(meeting_id, "mom_summary.html")
         return {
             "meeting_id": meeting_id,
@@ -267,6 +279,7 @@ class FilesystemIndexer:
         }
 
     def get_meeting_extraction(self, meeting_id: str) -> dict[str, Any]:
+        """Return extraction payloads for a meeting."""
         return {
             "meeting_id": meeting_id,
             "extraction": self._read_json_if_exists(self.settings.artifacts_dir / meeting_id / "decisions_actions.json") or {},
@@ -274,6 +287,7 @@ class FilesystemIndexer:
         }
 
     def get_meeting_repro(self, meeting_id: str) -> dict[str, Any]:
+        """Return reproducibility and offline-audit artifacts for a meeting."""
         meeting_dir = self.settings.artifacts_dir / meeting_id
         run_manifest = self._read_json_if_exists(meeting_dir / "run_manifest.json")
         offline = self._read_json_if_exists(meeting_dir / "preflight_offline_audit.json")
@@ -289,6 +303,7 @@ class FilesystemIndexer:
         }
 
     def list_configs(self) -> list[dict[str, Any]]:
+        """List readable YAML config files from the configured config directory."""
         rows: list[dict[str, Any]] = []
         for path in sorted(self.settings.configs_dir.glob("*.y*ml")):
             self.security.ensure_readable(path)
@@ -296,6 +311,7 @@ class FilesystemIndexer:
         return rows
 
     def read_config(self, name: str) -> dict[str, Any]:
+        """Read one config file after validating the requested filename."""
         self.security.validate_relative_input(name)
         path = self.settings.configs_dir / name
         self.security.ensure_readable(path)
@@ -304,6 +320,7 @@ class FilesystemIndexer:
         return {"name": path.name, "path": str(path), "content": path.read_text(encoding="utf-8")}
 
     def get_dashboard(self) -> dict[str, Any]:
+        """Return the dashboard payload composed from meetings and eval data."""
         meetings = self.list_meetings()
         eval_summary = self.get_eval_summary()
         mlruns_root = self.settings.project_root / "artifacts" / "mlruns"
@@ -320,9 +337,11 @@ class FilesystemIndexer:
         }
 
     def get_governance(self) -> dict[str, Any]:
+        """Return governance-oriented aggregate data for the UI."""
         return {"evidence_bundles": self.list_evidence_bundles(), "mlflow": self.list_mlflow_runs()}
 
     def list_evidence_bundles(self) -> list[dict[str, Any]]:
+        """List generated acceptance-evidence bundles, if any exist."""
         evidence_root = self.settings.project_root / "artifacts" / "acceptance_bundles"
         evidence = []
         if evidence_root.exists():
@@ -331,6 +350,7 @@ class FilesystemIndexer:
         return evidence
 
     def list_mlflow_runs(self) -> dict[str, Any]:
+        """List offline MLflow run metadata files when present."""
         mlruns_root = self.settings.project_root / "artifacts" / "mlruns"
         mlflow = {"configured": mlruns_root.exists(), "runs": []}
         if mlruns_root.exists():
@@ -339,6 +359,7 @@ class FilesystemIndexer:
         return mlflow
 
     def _discover_meeting_ids(self) -> list[str]:
+        """Discover meeting ids from raw audio files and artifact directories."""
         audio_ids = {
             path.name.removesuffix(".Mix-Headset.wav")
             for path in self.settings.raw_ami_audio_dir.glob("*.Mix-Headset.wav")
@@ -347,11 +368,13 @@ class FilesystemIndexer:
         return sorted(audio_ids | artifact_ids)
 
     def _read_json_if_exists(self, path: Path) -> dict[str, Any] | None:
+        """Read a JSON object when the file exists, otherwise return ``None``."""
         if path.exists():
             return read_json(path)
         return None
 
     def _read_list_if_exists(self, path: Path, jsonl: bool = False) -> list[dict[str, Any]]:
+        """Read a list-like artifact, tolerating missing files."""
         if not path.exists():
             return []
         if jsonl:
@@ -360,6 +383,7 @@ class FilesystemIndexer:
         return payload if isinstance(payload, list) else []
 
     def _read_stage_trace(self, meeting_id: str) -> dict[str, dict[str, Any]]:
+        """Read the latest stage-end event recorded for each pipeline stage."""
         path = self.settings.artifacts_dir / meeting_id / "stage_trace.jsonl"
         if not path.exists():
             return {}
@@ -373,6 +397,7 @@ class FilesystemIndexer:
         return stage_data
 
     def _max_mtime(self, candidates: list[Path]) -> datetime | None:
+        """Return the newest modification time across existing candidate paths."""
         mtimes = []
         for path in candidates:
             if path.exists():
@@ -380,6 +405,7 @@ class FilesystemIndexer:
         return max(mtimes) if mtimes else None
 
     def _relative_fallback(self, path: Path) -> str:
+        """Return a best-effort project-relative string for a missing path."""
         try:
             return str(path.relative_to(self.settings.project_root))
         except ValueError:

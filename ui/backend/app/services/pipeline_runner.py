@@ -1,3 +1,11 @@
+"""Subprocess-backed run-control service for the UI backend.
+
+The backend does not execute pipeline stages inline. Instead it spawns the
+existing batch runner script, captures logs, and reflects persisted summaries
+back into API responses. This preserves the repository's current CLI contracts
+and artifact semantics.
+"""
+
 from __future__ import annotations
 
 import json
@@ -19,6 +27,8 @@ from app.services.fs_indexer import PIPELINE_STAGES
 
 @dataclass
 class RunRecord:
+    """In-memory state for one UI-triggered or restored run."""
+
     run_id: str
     run_label: str
     meeting_id: str
@@ -39,7 +49,10 @@ class RunRecord:
 
 
 class PipelineRunner:
+    """Manage subprocess-backed pipeline runs for the UI backend."""
+
     def __init__(self, settings: Settings) -> None:
+        """Initialize the runner registry and restore persisted run metadata."""
         self.settings = settings
         self._runs: dict[str, RunRecord] = {}
         self._lock = threading.Lock()
@@ -48,6 +61,7 @@ class PipelineRunner:
         self._load_registry()
 
     def ensure_enabled(self) -> None:
+        """Raise when run controls are disabled for the deployed backend mode."""
         if not self.settings.run_controls_enabled:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -55,6 +69,7 @@ class PipelineRunner:
             )
 
     def create_run(self, request: RunCreateRequest) -> RunRecord:
+        """Create a batch-run subprocess and register it for UI polling."""
         self.ensure_enabled()
         config_path = self._resolve_config(request.config)
         meeting_ids = self._resolve_requested_meetings(request)
@@ -99,6 +114,7 @@ class PipelineRunner:
         return record
 
     def get_run(self, run_id: str) -> RunRecord:
+        """Return a live run record, refreshing stage events when available."""
         with self._lock:
             record = self._runs.get(run_id)
         if not record:
@@ -107,6 +123,7 @@ class PipelineRunner:
         return record
 
     def list_runs(self) -> list[dict[str, Any]]:
+        """Return live runs merged with persisted historical summaries."""
         live_runs: list[dict[str, Any]] = []
         with self._lock:
             for record in self._runs.values():
@@ -117,6 +134,7 @@ class PipelineRunner:
         return combined
 
     def list_runs_for_meeting(self, meeting_id: str) -> list[dict[str, Any]]:
+        """Return runs associated with a particular meeting id."""
         self._validate_meeting_id(meeting_id)
         live_runs: list[dict[str, Any]] = []
         with self._lock:
@@ -129,6 +147,7 @@ class PipelineRunner:
         return combined
 
     def cancel_run(self, run_id: str) -> RunRecord:
+        """Attempt to terminate a queued or running subprocess."""
         self.ensure_enabled()
         record = self.get_run(run_id)
         process = record.process
@@ -165,6 +184,7 @@ class PipelineRunner:
         return record
 
     def _build_command(self, request: RunCreateRequest, config_path: Path, run_label: str) -> list[str]:
+        """Build the exact batch-runner command used for a UI launch."""
         meeting_ids = request.meeting_ids or ([request.meeting_id] if request.meeting_id else [])
         command = [
             self.settings.python_executable,
@@ -184,6 +204,7 @@ class PipelineRunner:
         return command
 
     def _build_env(self) -> dict[str, str]:
+        """Build the subprocess environment, preserving the caller's env vars."""
         env = dict(**{key: value for key, value in dict().items()})
         env.update({"PYTHONPATH": str(self.settings.project_root / "src")})
         import os
@@ -193,16 +214,19 @@ class PipelineRunner:
         return merged
 
     def _resolve_config(self, config_name: str) -> Path:
+        """Resolve a config filename relative to the backend config directory."""
         path = self.settings.configs_dir / config_name
         if not path.exists():
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Config not found")
         return path
 
     def _validate_meeting_id(self, meeting_id: str) -> None:
+        """Reject invalid meeting identifiers before shelling out."""
         if not meeting_id or "/" in meeting_id or ".." in meeting_id:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid meeting_id")
 
     def _resolve_requested_meetings(self, request: RunCreateRequest) -> list[str]:
+        """Merge primary and repeated meeting ids into a stable unique list."""
         meeting_ids = list(dict.fromkeys(request.meeting_ids or []))
         if request.meeting_id:
             meeting_ids.insert(0, request.meeting_id)
@@ -214,6 +238,7 @@ class PipelineRunner:
         return meeting_ids
 
     def _watch_process(self, record: RunRecord, run_label: str) -> None:
+        """Consume subprocess output, finalize state, and persist the registry."""
         assert record.process is not None
         process = record.process
         if process.stdout:
@@ -240,6 +265,7 @@ class PipelineRunner:
         self._persist_registry()
 
     def _refresh_stage_events(self, record: RunRecord) -> None:
+        """Refresh recent stage-trace events for single-meeting runs."""
         if len(record.meeting_ids) != 1:
             return
         stage_trace = self.settings.artifacts_dir / record.meeting_id / "stage_trace.jsonl"
@@ -255,6 +281,7 @@ class PipelineRunner:
             record.stage_events = rows[-30:]
 
     def build_progress_summary(self, record: RunRecord) -> RunProgressSummary:
+        """Convert recorded stage events into a UI-friendly progress summary."""
         stage_rows: dict[str, dict[str, Any]] = {}
         current_stage_key: str | None = None
         last_event: str | None = None
@@ -324,6 +351,7 @@ class PipelineRunner:
         )
 
     def _read_summary(self, run_label: str) -> dict[str, Any] | None:
+        """Read the persisted batch summary file for one run label."""
         summary_path = self.settings.batch_runs_dir / f"{run_label}.summary.json"
         if not summary_path.exists():
             return None
@@ -331,6 +359,7 @@ class PipelineRunner:
             return json.load(handle)
 
     def _historical_runs(self, meeting_id: str | None = None) -> list[dict[str, Any]]:
+        """Load historical run rows from persisted batch summary files."""
         rows: list[dict[str, Any]] = []
         if not self.settings.batch_runs_dir.exists():
             return rows
@@ -361,6 +390,7 @@ class PipelineRunner:
         return rows
 
     def _normalize_history_status(self, record: dict[str, Any]) -> str:
+        """Map persisted batch-runner statuses into UI status labels."""
         status = record.get("status", "unknown")
         if (
             status == "failed"
@@ -371,6 +401,7 @@ class PipelineRunner:
         return status
 
     def _serialize_live_run(self, record: RunRecord) -> dict[str, Any]:
+        """Serialize the in-memory subset used by list endpoints."""
         return {
             "run_id": record.run_id,
             "meeting_id": record.meeting_id,
@@ -385,12 +416,14 @@ class PipelineRunner:
         }
 
     def _persist_registry(self) -> None:
+        """Persist the current run registry for backend restarts."""
         self.settings.batch_runs_dir.mkdir(parents=True, exist_ok=True)
         with self._lock:
             payload = {"runs": [self._record_to_json(record) for record in self._runs.values()]}
         self._registry_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     def _load_registry(self) -> None:
+        """Restore previously persisted run metadata when the backend starts."""
         if not self._registry_path.exists():
             return
         try:
@@ -426,6 +459,7 @@ class PipelineRunner:
             self._runs = loaded
 
     def _reconcile_loaded_record(self, record: RunRecord) -> None:
+        """Refresh a restored record from summary artifacts and stage traces."""
         summary = self._read_summary(record.run_label)
         if summary:
             record.summary = summary
@@ -445,6 +479,7 @@ class PipelineRunner:
             record.recent_logs.append("UI backend restarted before active run completion could be confirmed.")
 
     def _record_to_json(self, record: RunRecord) -> dict[str, Any]:
+        """Convert a run record into a JSON-serializable persistence payload."""
         return {
             "run_id": record.run_id,
             "run_label": record.run_label,

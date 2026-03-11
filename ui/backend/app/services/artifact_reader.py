@@ -1,3 +1,5 @@
+"""Helpers for decoding artifact files for API preview endpoints."""
+
 from __future__ import annotations
 
 import csv
@@ -9,6 +11,7 @@ from app.schemas.api_models import ArtifactKind
 
 
 def infer_kind(path: Path) -> ArtifactKind:
+    """Infer the preview/download kind for a filesystem path."""
     if not path.exists():
         return "missing"
     if path.is_dir():
@@ -32,11 +35,13 @@ def infer_kind(path: Path) -> ArtifactKind:
 
 
 def read_json(path: Path) -> Any:
+    """Load a JSON artifact from disk."""
     with path.open("r", encoding="utf-8") as handle:
         return json.load(handle)
 
 
 def read_jsonl(path: Path, limit: int | None = None) -> list[Any]:
+    """Load a JSONL artifact into memory with an optional row limit."""
     rows: list[Any] = []
     with path.open("r", encoding="utf-8") as handle:
         for index, line in enumerate(handle):
@@ -50,6 +55,7 @@ def read_jsonl(path: Path, limit: int | None = None) -> list[Any]:
 
 
 def read_csv(path: Path, limit: int | None = None) -> list[dict[str, Any]]:
+    """Load a CSV artifact into a list of dictionaries."""
     with path.open("r", encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle)
         rows: list[dict[str, Any]] = []
@@ -61,11 +67,13 @@ def read_csv(path: Path, limit: int | None = None) -> list[dict[str, Any]]:
 
 
 def read_text(path: Path, limit_chars: int = 20000) -> str:
+    """Read a text-like artifact with a conservative preview limit."""
     with path.open("r", encoding="utf-8") as handle:
         return handle.read(limit_chars)
 
 
 def read_artifact_preview(path: Path) -> Any:
+    """Dispatch to the appropriate preview loader for an artifact path."""
     kind = infer_kind(path)
     if kind == "json":
         return read_json(path)

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Generate DVC stage templates that mirror current pipeline entrypoints."""
+
 from __future__ import annotations
 
 import argparse
@@ -18,6 +20,7 @@ from ami_mom_pipeline.pipeline import list_meetings  # noqa: E402
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build the CLI parser for DVC template generation."""
     p = argparse.ArgumentParser(description="Generate offline DVC stage templates for AMI pipeline runs")
     p.add_argument("--config", default="configs/pipeline.nemo.llama.yaml")
     p.add_argument("--meeting-id", dest="meeting_ids", action="append", default=None, help="Explicit meeting ID (repeatable)")
@@ -30,6 +33,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    """Generate the requested DVC stage template and print its metadata."""
     args = build_parser().parse_args()
     cfg = AppConfig.load(args.config if Path(args.config).exists() else None)
     meetings = _select_meetings(cfg, args.meeting_ids, args.prefix, args.limit)
@@ -54,6 +58,7 @@ def main() -> int:
 
 
 def _select_meetings(cfg: AppConfig, explicit: list[str] | None, prefix: str | None, limit: int | None) -> list[str]:
+    """Select meetings from explicit ids or repository discovery."""
     if explicit:
         meetings = list(dict.fromkeys(explicit))
     else:
@@ -66,6 +71,7 @@ def _select_meetings(cfg: AppConfig, explicit: list[str] | None, prefix: str | N
 
 
 def _single_stage(config_path: str, meeting_id: str) -> dict:
+    """Return the DVC stage definition for a single-meeting run."""
     return {
         "cmd": f"PYTHONPATH=src python3 -m ami_mom_pipeline --config {config_path} run --meeting-id {meeting_id}",
         "deps": [
@@ -84,6 +90,7 @@ def _single_stage(config_path: str, meeting_id: str) -> dict:
 
 
 def _batch_stage(config_path: str, meetings: list[str]) -> dict:
+    """Return the DVC stage definition for a batch-runner invocation."""
     meeting_flags = " ".join(f"--meeting-id {m}" for m in meetings)
     label = f"dvc_batch_{meetings[0]}_{meetings[-1]}_{len(meetings)}"
     return {
@@ -104,6 +111,7 @@ def _batch_stage(config_path: str, meetings: list[str]) -> dict:
 
 
 def _resolve_output_path(output: str | None, mode: str, meetings: list[str]) -> Path:
+    """Resolve the output YAML path, applying the default naming scheme."""
     if output:
         p = Path(output).expanduser()
         return p if p.is_absolute() else ROOT / p

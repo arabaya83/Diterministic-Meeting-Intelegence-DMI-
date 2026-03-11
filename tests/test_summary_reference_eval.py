@@ -1,3 +1,5 @@
+"""Regression tests for reference-summary loading and evaluation outputs."""
+
 from __future__ import annotations
 
 import csv
@@ -10,6 +12,7 @@ from ami_mom_pipeline.utils.ami_annotations import load_abstractive_summary_sect
 
 
 def test_load_abstractive_summary_sections_reads_reference_xml(tmp_path: Path) -> None:
+    """Reference abstractive-summary XML should be parsed into section buckets."""
     annotations_dir = tmp_path / "annotations"
     abstractive_dir = annotations_dir / "abstractive"
     abstractive_dir.mkdir(parents=True)
@@ -41,6 +44,7 @@ def test_load_abstractive_summary_sections_reads_reference_xml(tmp_path: Path) -
 
 
 def test_stage_evaluate_writes_real_rouge_scores_when_reference_exists(tmp_path: Path) -> None:
+    """Evaluation should write non-empty ROUGE and speech metrics when refs exist."""
     cfg = AppConfig()
     cfg.paths.annotations_dir = str(tmp_path / "annotations")
     cfg.paths.artifacts_dir = str(tmp_path / "artifacts")
@@ -151,6 +155,7 @@ def test_stage_evaluate_writes_real_rouge_scores_when_reference_exists(tmp_path:
 
 
 def test_stage_finalize_summary_enriches_narrative_with_missing_action_or_decision(tmp_path: Path) -> None:
+    """Finalize-summary should append missing decision and action coverage."""
     cfg = AppConfig()
     paths = tmp_path / "meeting"
     paths.mkdir()
@@ -189,6 +194,8 @@ def test_stage_finalize_summary_enriches_narrative_with_missing_action_or_decisi
     }
 
     class _Paths:
+        """Minimal stand-in exposing the artifact directory expected by the stage."""
+
         meeting_artifacts_dir = paths
 
     finalized = stage_finalize_summary(cfg, _Paths(), "TEST100a", summary_out, extract_out)

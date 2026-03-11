@@ -1,3 +1,5 @@
+"""Quality-focused regression tests for Llama backend heuristics."""
+
 from __future__ import annotations
 
 from ami_mom_pipeline.backends.llama_cpp_backend import LlamaCppBackend
@@ -6,10 +8,12 @@ from ami_mom_pipeline.pipeline import stage_finalize_summary
 
 
 def _backend() -> LlamaCppBackend:
+    """Return a backend instance configured with default test settings."""
     return LlamaCppBackend(AppConfig())
 
 
 def test_model_visible_chunk_text_strips_speaker_labels() -> None:
+    """Prompt-visible chunk text should hide speaker labels."""
     chunk = {"text": "SPEAKER_1: We should prototype the remote.\nSPEAKER_2: I will compare costs."}
     cleaned = LlamaCppBackend._model_visible_chunk_text(chunk)
     assert "SPEAKER_1" not in cleaned
@@ -19,6 +23,7 @@ def test_model_visible_chunk_text_strips_speaker_labels() -> None:
 
 
 def test_select_extraction_chunks_keeps_explicit_cue_chunks_and_neighbors() -> None:
+    """Chunk selection should keep explicit cue chunks and their neighbors."""
     backend = _backend()
     chunks = [
         {"chunk_id": "c1", "text": "SPEAKER_1: general brainstorming about shape and colors"},
@@ -40,6 +45,7 @@ def test_select_extraction_chunks_keeps_explicit_cue_chunks_and_neighbors() -> N
 
 
 def test_extract_chunk_prompt_uses_window_context_without_speaker_labels() -> None:
+    """Extraction prompts should include surrounding context without speaker labels."""
     prompt = LlamaCppBackend._extract_chunk_prompt(
         "IS1001c",
         {"chunk_id": "c2", "text": "SPEAKER_2: I will prepare the estimate."},
@@ -57,6 +63,7 @@ def test_extract_chunk_prompt_uses_window_context_without_speaker_labels() -> No
 
 
 def test_evidence_snippet_strips_speaker_labels() -> None:
+    """Evidence snippets should remove speaker-label noise."""
     snippet = LlamaCppBackend._evidence_snippet(
         "SPEAKER_1: We should build a prototype next week. SPEAKER_2: Agreed.",
         "build a prototype",
@@ -67,6 +74,7 @@ def test_evidence_snippet_strips_speaker_labels() -> None:
 
 
 def test_stage_finalize_summary_adds_extraction_actions_to_follow_up(tmp_path) -> None:
+    """Finalize-summary should carry extraction actions into follow-up items."""
     cfg = AppConfig()
     paths = tmp_path / "meeting"
     paths.mkdir()
@@ -97,6 +105,8 @@ def test_stage_finalize_summary_adds_extraction_actions_to_follow_up(tmp_path) -
     }
 
     class _Paths:
+        """Minimal stand-in exposing the artifact directory expected by the stage."""
+
         meeting_artifacts_dir = paths
 
     finalized = stage_finalize_summary(cfg, _Paths(), "IS1001c", summary_out, extract_out)
@@ -105,6 +115,7 @@ def test_stage_finalize_summary_adds_extraction_actions_to_follow_up(tmp_path) -
 
 
 def test_speculative_action_text_is_rejected() -> None:
+    """Speculative brainstorming fragments should not count as actions."""
     backend = _backend()
     assert backend._is_speculative_action_text("Find a spongy fruit")
     assert backend._is_speculative_action_text("Control TV with a fruit")
@@ -112,6 +123,7 @@ def test_speculative_action_text_is_rejected() -> None:
 
 
 def test_follow_up_filter_rejects_brainstorm_artifacts() -> None:
+    """Follow-up filtering should reject brainstorming artifacts from noisy output."""
     backend = _backend()
     assert backend._is_low_quality_summary_text("Find a spongy fruit", kind="follow_up")
     assert backend._is_low_quality_summary_text("Control TV with a fruit", kind="follow_up")
@@ -122,6 +134,7 @@ def test_follow_up_filter_rejects_brainstorm_artifacts() -> None:
 
 
 def test_follow_up_normalization_rewrites_transcript_fragments() -> None:
+    """Follow-up normalization should rewrite repeated transcript fragments."""
     backend = _backend()
     assert (
         backend._normalize_summary_point_text(
@@ -140,6 +153,7 @@ def test_follow_up_normalization_rewrites_transcript_fragments() -> None:
 
 
 def test_key_point_filter_drops_brainstorm_artifacts() -> None:
+    """Key-point filtering should discard low-quality brainstorm artifacts."""
     backend = _backend()
     filtered = backend._filter_key_points(
         [
@@ -156,6 +170,7 @@ def test_key_point_filter_drops_brainstorm_artifacts() -> None:
 
 
 def test_summary_narrative_downgrades_unverified_agreement_language() -> None:
+    """Narrative normalization should avoid unsupported agreement claims."""
     backend = _backend()
     chunks = [
         {"chunk_id": "c1", "text": "SPEAKER_1: We should review prior research next time."},
@@ -170,6 +185,7 @@ def test_summary_narrative_downgrades_unverified_agreement_language() -> None:
 
 
 def test_coverage_chunks_for_prompt_spans_late_meeting_content() -> None:
+    """Prompt coverage should include early, middle, and late chunks."""
     backend = _backend()
     chunks = [
         {"chunk_id": f"c{i:02d}", "text": f"SPEAKER_1: generic content section {i}"}

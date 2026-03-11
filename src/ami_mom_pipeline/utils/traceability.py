@@ -1,3 +1,10 @@
+"""Traceability helpers for reproducibility and offline governance.
+
+These helpers collect hashes, environment metadata, and stage-level execution
+events that are written alongside pipeline artifacts. The outputs are designed
+to be stable enough for audit and comparison across repeated offline runs.
+"""
+
 from __future__ import annotations
 
 import hashlib
@@ -15,12 +22,14 @@ from .io_utils import ensure_dir
 
 
 def _sha256_bytes(data: bytes) -> str:
+    """Return the SHA-256 digest for an in-memory payload."""
     h = hashlib.sha256()
     h.update(data)
     return h.hexdigest()
 
 
 def sha256_file(path: Path) -> str:
+    """Stream a file from disk and return its SHA-256 digest."""
     h = hashlib.sha256()
     with path.open("rb") as f:
         while True:
@@ -32,11 +41,13 @@ def sha256_file(path: Path) -> str:
 
 
 def config_digest(cfg: AppConfig) -> str:
+    """Hash the normalized config payload used for a pipeline run."""
     payload = json.dumps(cfg.model_dump(), sort_keys=True, ensure_ascii=True, separators=(",", ":")).encode("utf-8")
     return _sha256_bytes(payload)
 
 
 def collect_environment_snapshot() -> dict[str, Any]:
+    """Capture a small deterministic environment snapshot for manifests."""
     keys = [
         "PYTHONHASHSEED",
         "HF_HUB_OFFLINE",
@@ -54,6 +65,7 @@ def collect_environment_snapshot() -> dict[str, Any]:
 
 
 def collect_code_provenance(repo_root: Path) -> dict[str, Any]:
+    """Hash the core code files that materially affect pipeline outputs."""
     candidates = [
         repo_root / "src/ami_mom_pipeline/pipeline.py",
         repo_root / "src/ami_mom_pipeline/config.py",
@@ -84,10 +96,12 @@ def collect_code_provenance(repo_root: Path) -> dict[str, Any]:
 
 
 def offline_preflight_audit(cfg: AppConfig) -> dict[str, Any]:
+    """Check offline-sensitive config fields before a run starts."""
     violations: list[str] = []
     warnings: list[str] = []
 
     def _check_local_path(name: str, value: str | None) -> None:
+        """Validate that configured model paths are local filesystem paths."""
         if not value:
             return
         if "://" in value:
@@ -131,17 +145,21 @@ def offline_preflight_audit(cfg: AppConfig) -> dict[str, Any]:
 
 @dataclass
 class StageTraceWriter:
+    """Append-only writer for per-stage execution events."""
+
     path: Path
     enabled: bool = True
     truncate_on_init: bool = True
 
     def __post_init__(self) -> None:
+        """Prepare the output file when tracing is enabled."""
         if self.enabled:
             ensure_dir(self.path.parent)
             if self.truncate_on_init:
                 self.path.write_text("", encoding="utf-8")
 
     def write(self, event: dict[str, Any]) -> None:
+        """Write one JSONL event to disk when tracing is enabled."""
         if not self.enabled:
             return
         with self.path.open("a", encoding="utf-8") as f:
@@ -157,6 +175,7 @@ def trace_stage(
     meeting_id: str,
     summarizer=None,
 ) -> Any:
+    """Run a stage, record start/end events, and return the stage output."""
     start_perf = time.perf_counter()
     start_wall = time.time()
     writer.write({"event": "stage_start", "meeting_id": meeting_id, "stage": stage_name, "ts_unix": round(start_wall, 6)})

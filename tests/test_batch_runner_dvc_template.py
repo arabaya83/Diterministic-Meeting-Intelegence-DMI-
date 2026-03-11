@@ -1,3 +1,5 @@
+"""Regression tests for DVC template metadata in batch summaries."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -7,6 +9,7 @@ from ami_mom_pipeline.config import AppConfig
 
 
 def _load_batch_runner_module():
+    """Import the batch runner script as a module for helper testing."""
     root = Path(__file__).resolve().parents[1]
     path = root / "scripts" / "run_nemo_batch_sequential.py"
     spec = importlib.util.spec_from_file_location("run_nemo_batch_sequential", path)
@@ -17,6 +20,7 @@ def _load_batch_runner_module():
 
 
 def test_build_summary_includes_dvc_template_metadata(tmp_path: Path) -> None:
+    """Batch summaries should include any generated DVC template metadata."""
     mod = _load_batch_runner_module()
     cfg = AppConfig()
     summary = mod.build_summary(
@@ -37,14 +41,18 @@ def test_build_summary_includes_dvc_template_metadata(tmp_path: Path) -> None:
 
 
 def test_generate_dvc_template_reports_subprocess_failure(monkeypatch) -> None:
+    """Template generation failures should be surfaced in the returned payload."""
     mod = _load_batch_runner_module()
 
     class FakeProc:
+        """Small stand-in for a failed subprocess result."""
+
         returncode = 7
         stdout = "oops"
         stderr = "bad"
 
     def fake_run(*args, **kwargs):
+        """Return a deterministic failed process object for the test."""
         return FakeProc()
 
     monkeypatch.setattr(mod.subprocess, "run", fake_run)

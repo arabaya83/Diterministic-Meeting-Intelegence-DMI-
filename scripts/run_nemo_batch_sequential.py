@@ -212,6 +212,7 @@ def main() -> int:
 
 
 def _select_meetings(cfg: AppConfig, explicit: list[str] | None, prefix: str | None, limit: int | None) -> list[str]:
+    """Select meetings for the batch run in a stable deterministic order."""
     if explicit:
         meetings = list(dict.fromkeys(explicit))
     else:
@@ -224,6 +225,7 @@ def _select_meetings(cfg: AppConfig, explicit: list[str] | None, prefix: str | N
 
 
 def _resolve_log_dir(path_str: str) -> Path:
+    """Resolve the batch log directory relative to the repository root."""
     p = Path(path_str).expanduser()
     if not p.is_absolute():
         p = ROOT / p
@@ -231,10 +233,12 @@ def _resolve_log_dir(path_str: str) -> Path:
 
 
 def _meeting_artifact_dir(cfg: AppConfig, meeting_id: str) -> Path:
+    """Return the artifact directory used for one meeting."""
     return Path(cfg.paths.artifacts_dir) / "ami" / meeting_id
 
 
 def _process_meeting(cfg: AppConfig, meeting_id: str, index: int, total: int, resume: bool) -> dict[str, Any]:
+    """Run or skip one meeting and return the recorded batch event row."""
     del total
     started_dt = datetime.now(timezone.utc)
     started = time.monotonic()
@@ -300,6 +304,7 @@ def _process_meeting(cfg: AppConfig, meeting_id: str, index: int, total: int, re
 
 
 def _build_validate_only_record(cfg: AppConfig, meeting_id: str, index: int, resume: bool) -> dict[str, Any]:
+    """Build a validation-only record without executing pipeline stages."""
     artifact_dir = _meeting_artifact_dir(cfg, meeting_id)
     manifest_path = artifact_dir / "run_manifest.json"
     now = datetime.now(timezone.utc).isoformat()
@@ -329,6 +334,7 @@ def _build_validate_only_record(cfg: AppConfig, meeting_id: str, index: int, res
     return rec
 
 def _append_jsonl(path: Path, row: dict[str, Any]) -> None:
+    """Append one JSON object to a JSONL log file."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(row, ensure_ascii=True, sort_keys=True))
@@ -336,6 +342,7 @@ def _append_jsonl(path: Path, row: dict[str, Any]) -> None:
 
 
 def _write_timings_csv(path: Path, records: list[dict[str, Any]]) -> None:
+    """Write the per-meeting timing table for the completed batch."""
     path.parent.mkdir(parents=True, exist_ok=True)
     fieldnames = [
         "order",
@@ -358,6 +365,7 @@ def _write_timings_csv(path: Path, records: list[dict[str, Any]]) -> None:
 
 
 def validate_artifacts(cfg: AppConfig, meeting_ids: list[str]) -> dict[str, Any]:
+    """Validate expected meeting and aggregate artifacts after a batch run."""
     artifacts_root = Path(cfg.paths.artifacts_dir)
     canonical_index = _load_jsonl_index(artifacts_root / "ami" / "meetings_canonical.jsonl", "meeting_id")
     wer_index = _load_csv_index(artifacts_root / "eval" / "ami" / "wer_scores.csv", "meeting_id")
@@ -398,6 +406,7 @@ def run_speech_eval(
     out_json: Path,
     collar_sec: float,
 ) -> dict[str, Any] | None:
+    """Run the speech-evaluation helper script for the selected meetings."""
     if not meeting_ids:
         return None
     out_csv.parent.mkdir(parents=True, exist_ok=True)
@@ -454,6 +463,7 @@ def _validate_meeting(
     wer_index: dict[str, dict[str, str]],
     rouge_index: dict[str, dict[str, str]],
 ) -> dict[str, Any]:
+    """Validate required files and aggregate rows for one meeting."""
     artifact_dir = _meeting_artifact_dir(cfg, meeting_id)
     missing_files = [name for name in REQUIRED_MEETING_FILES if not (artifact_dir / name).exists()]
     errors: list[str] = []
@@ -519,6 +529,7 @@ def _validate_meeting(
 
 
 def _load_jsonl_index(path: Path, key: str) -> dict[str, dict[str, Any]]:
+    """Load a JSONL file into a dictionary keyed by one field."""
     out: dict[str, dict[str, Any]] = {}
     if not path.exists():
         return out
@@ -538,6 +549,7 @@ def _load_jsonl_index(path: Path, key: str) -> dict[str, dict[str, Any]]:
 
 
 def _load_csv_index(path: Path, key: str) -> dict[str, dict[str, str]]:
+    """Load a CSV file into a dictionary keyed by one column."""
     out: dict[str, dict[str, str]] = {}
     if not path.exists():
         return out
@@ -551,6 +563,7 @@ def _load_csv_index(path: Path, key: str) -> dict[str, dict[str, str]]:
 
 
 def _nonempty_line_count(path: Path) -> int:
+    """Count non-empty lines in a text file."""
     count = 0
     with path.open("r", encoding="utf-8") as f:
         for line in f:
@@ -572,6 +585,7 @@ def build_summary(
     speech_eval_json_path: Path | None,
     dvc_template_info: dict[str, Any] | None,
 ) -> dict[str, Any]:
+    """Build the batch summary JSON written at the end of a run."""
     counts = {"ok": 0, "skipped": 0, "failed": 0}
     for rec in records:
         if rec["status"] == "ok":
@@ -599,6 +613,7 @@ def build_summary(
 
 
 def _generate_dvc_template(config_path: Path, meeting_ids: list[str], mode: str, output: str | None) -> dict[str, Any]:
+    """Invoke the DVC template generator and parse its JSON response."""
     cmd = [
         sys.executable,
         str(ROOT / "scripts" / "generate_dvc_stage_template.py"),
@@ -629,6 +644,7 @@ def _generate_dvc_template(config_path: Path, meeting_ids: list[str], mode: str,
 
 
 def _log_batch_to_mlflow(cfg: AppConfig, run_label: str, summary: dict[str, Any], summary_path: Path) -> None:
+    """Best-effort logging of aggregate batch metrics to local MLflow."""
     if not cfg.runtime.enable_mlflow_logging:
         return
     try:
@@ -676,6 +692,7 @@ def _log_batch_to_mlflow(cfg: AppConfig, run_label: str, summary: dict[str, Any]
 
 
 def _fmt_metric(x: Any) -> str:
+    """Format a metric value for the batch runner's console summary."""
     if x is None:
         return "n/a"
     try:
